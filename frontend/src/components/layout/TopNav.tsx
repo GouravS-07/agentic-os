@@ -206,23 +206,6 @@ export function TopNav({ onSearchSubmit, pendingApprovalsCount = 0 }: TopNavProp
           <span>Engine: <strong className="text-foreground font-semibold">Autonomous OS</strong></span>
         </div>
 
-        {/* Interlocking World Mode Toggle */}
-        <button
-          type="button"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              const url = new URL(window.location.href);
-              url.searchParams.set("world", "1");
-              url.searchParams.delete("legacy");
-              window.location.href = "/" + url.search;
-            }
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-semibold transition-all shadow-sm bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25"
-        >
-          <span className="w-2 h-2 rounded-none bg-amber-400 inline-block" />
-          <span>INTERLOCKING WORLD</span>
-        </button>
-
         {/* 3D Spatial Environment Toggle */}
         <button
           type="button"

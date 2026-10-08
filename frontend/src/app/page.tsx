@@ -9,7 +9,17 @@ import {
   RefreshCw,
   GitBranch,
   Layers,
-  ChevronDown,
+  Bot,
+  Activity,
+  ShieldAlert,
+  ListTodo,
+  CheckCircle2,
+  Clock,
+  Zap,
+  Terminal,
+  Brain,
+  Cpu,
+  Play,
 } from "lucide-react";
 import { Mission, Task } from "@/types";
 import { useWebSocket } from "@/lib/useWebSocket";
@@ -18,8 +28,43 @@ import { AICoreSphere, AICoreState } from "@/components/core/AICoreSphere";
 import { useSceneStore } from "@/scene/state/useSceneStore";
 import { SceneAdapter } from "@/scene/adapters/SceneAdapter";
 import { cn } from "@/lib/utils";
-import { evaluateWorldMode } from "@/world/config";
-import { WorldShell } from "@/world/ui/WorldShell";
+
+const QUICK_DIRECTIVES = [
+  "Build a portfolio website from my GitHub repositories and deploy",
+  "Perform automated security audit and scan repository for vulnerabilities",
+  "Analyze codebase architecture and generate technical documentation",
+];
+
+const AGENT_FLEET = [
+  {
+    role: "PLANNER",
+    name: "Mission Planner",
+    desc: "Decomposes unstructured intent into validated dependency DAGs.",
+    status: "ONLINE",
+    color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10",
+  },
+  {
+    role: "CODER",
+    name: "Code Synthesizer",
+    desc: "Writes, refactors, and tests code within isolated sandboxes.",
+    status: "ONLINE",
+    color: "text-purple-400 border-purple-500/30 bg-purple-500/10",
+  },
+  {
+    role: "AUDITOR",
+    name: "Security Gate",
+    desc: "Enforces strict tool access control and human approval gates.",
+    status: "ONLINE",
+    color: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+  },
+  {
+    role: "RESEARCHER",
+    name: "Knowledge Agent",
+    desc: "Retrieves context from episodic memory and vector stores.",
+    status: "ONLINE",
+    color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+  },
+];
 
 export default function HomePage() {
   const router = useRouter();
@@ -31,11 +76,6 @@ export default function HomePage() {
   const [liveEvents, setLiveEvents] = useState<EventItem[]>([]);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
-  const [isWorldMode, setIsWorldMode] = useState(false);
-
-  useEffect(() => {
-    setIsWorldMode(evaluateWorldMode());
-  }, []);
 
   const is3DEnabled = useSceneStore((s) => s.is3DEnabled);
 
@@ -116,6 +156,7 @@ export default function HomePage() {
       if (res.ok) {
         const mission = await res.json();
         await fetch(`/api/v1/missions/${mission.id}/plan`, { method: "POST" });
+        setGoalInput("");
         router.push(`/missions/${mission.id}`);
       }
     } catch (err) {
@@ -174,252 +215,29 @@ export default function HomePage() {
     else if (activeMission.replan_count && activeMission.replan_count > 0) coreState = "RECOVERING";
   }
 
-  // ----------------------------------------------------
-  // INTERLOCKING WORLD MODE (Milestone M1+)
-  // ----------------------------------------------------
-  if (isWorldMode) {
-    return <WorldShell />;
-  }
+  const runningTasksCount = tasks.filter((t) => t.status === "RUNNING").length;
+  const completedTasksCount = tasks.filter((t) => t.status === "COMPLETED").length;
 
-  // ----------------------------------------------------
-  // 3D EXPERIMENTAL EDITORIAL HOME (basement/Vela style)
-  // ----------------------------------------------------
-  if (is3DEnabled) {
-    return (
-      <div className="relative text-white font-sans selection:bg-white selection:text-black">
-        {/* ==================================================== */}
-        {/* SECTION 1: THE MONOLITH (95% Pure Spatial Scene)     */}
-        {/* ==================================================== */}
-        <section className="relative h-screen w-full flex flex-col justify-between px-8 sm:px-14 pt-28 pb-12 pointer-events-none select-none">
-          {/* Top Editorial Wordmark Layer */}
-          <div className="flex items-start justify-between z-20">
-            <div className="space-y-1.5">
-              <h1 className="text-4xl sm:text-7xl font-extralight tracking-[-0.04em] leading-none uppercase font-sans text-white/90">
-                Agentic
-              </h1>
-              <p className="text-[11px] font-mono tracking-[0.3em] uppercase text-zinc-400">
-                An Operating System for Autonomous Machines
-              </p>
-            </div>
-            <div className="text-right hidden sm:block">
-              <span className="text-[10px] font-mono tracking-[0.25em] text-zinc-400 uppercase block">
-                CORE SYSTEM // 01
-              </span>
-              <span className="text-xs font-mono text-zinc-300">
-                {activeMission ? `MISSION ${activeMission.id.slice(0, 6)}` : "STANDBY"}
-              </span>
-            </div>
-          </div>
-
-          {/* Bottom Huge Typography & Minimal Scroll Cue */}
-          <div className="flex items-end justify-between z-20 pb-4">
-            <div className="max-w-xs text-[11px] font-mono text-zinc-400 leading-relaxed hidden md:block">
-              Continuous neural synthesis, deterministic DAG execution, and self-healing graph replanning.
-            </div>
-
-            <a
-              href="#directives-section"
-              className="flex items-center gap-3 px-5 py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-mono text-zinc-300 hover:text-white transition-all pointer-events-auto cursor-pointer shadow-2xl backdrop-blur-md"
-            >
-              <span>EXPLORE THE RUNTIME</span>
-              <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
-            </a>
-
-            <div className="text-right">
-              <span className="text-6xl sm:text-9xl font-black tracking-[-0.05em] leading-none text-white/10 font-mono block">
-                OS
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* ==================================================== */}
-        {/* SECTION 2: THE DIRECTIVE ENGINE (Scroll Reveal)     */}
-        {/* ==================================================== */}
-        <section
-          id="directives-section"
-          className="relative min-h-screen flex flex-col justify-center px-6 sm:px-16 py-32 z-20 pointer-events-auto"
-        >
-          <div className="max-w-4xl mx-auto w-full space-y-12">
-            <div className="space-y-3">
-              <span className="text-[11px] font-mono tracking-[0.35em] text-zinc-400 uppercase font-semibold">
-                // 02 DIRECTIVE SYNTHESIS
-              </span>
-              <h2 className="text-4xl sm:text-6xl font-light tracking-tight text-white">
-                What should we build?
-              </h2>
-            </div>
-
-            {/* Restrained Typographic Input */}
-            <form onSubmit={handleCreateMissionFromGoal} className="space-y-6">
-              <div className="relative border-b-2 border-white/20 focus-within:border-white transition-colors pb-3">
-                <input
-                  type="text"
-                  value={goalInput}
-                  onChange={(e) => setGoalInput(e.target.value)}
-                  disabled={isSubmitting}
-                  placeholder="Assign high-level intent..."
-                  className="w-full bg-transparent text-xl sm:text-3xl text-white font-light placeholder:text-zinc-600 focus:outline-none font-sans"
-                />
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !goalInput.trim()}
-                  className="absolute right-0 bottom-3 px-6 py-2 rounded-full bg-white text-black text-xs font-semibold hover:bg-zinc-200 transition-all flex items-center gap-2 disabled:opacity-20 shadow-xl"
-                >
-                  {isSubmitting ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <span>INITIALIZE</span>
-                  )}
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Action Pills */}
-              <div className="flex items-center gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={handleRunDemoScenario}
-                  disabled={isDemoRunning}
-                  className="flex items-center gap-2 text-xs font-mono text-zinc-400 hover:text-white transition-colors disabled:opacity-40"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>RUN COMPLETE DEMO LOOP →</span>
-                </button>
-
-                <span className="text-zinc-600">•</span>
-
-                <button
-                  type="button"
-                  onClick={handleSeedData}
-                  disabled={isSeeding}
-                  className="flex items-center gap-2 text-xs font-mono text-zinc-400 hover:text-white transition-colors disabled:opacity-40"
-                >
-                  <Layers className="w-3.5 h-3.5 text-purple-400" />
-                  <span>SEED SCENARIO STATE →</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        {/* ==================================================== */}
-        {/* SECTION 3: MISSION ARCHITECTURE                      */}
-        {/* ==================================================== */}
-        <section className="relative min-h-screen flex flex-col justify-center px-6 sm:px-16 py-32 z-20 pointer-events-auto">
-          <div className="max-w-4xl mx-auto w-full space-y-8">
-            <div className="space-y-3">
-              <span className="text-[11px] font-mono tracking-[0.35em] text-zinc-400 uppercase font-semibold">
-                // 03 EXECUTION GRAPH
-              </span>
-              <h2 className="text-4xl sm:text-5xl font-light tracking-tight text-white">
-                Active Constellation
-              </h2>
-            </div>
-
-            {activeMission ? (
-              <div className="border border-white/10 rounded-3xl p-8 sm:p-10 space-y-6 bg-black/40 backdrop-blur-xl">
-                <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-white/10 pb-6">
-                  <div>
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block mb-1">
-                      DIRECTIVE TARGET
-                    </span>
-                    <h3 className="text-2xl font-bold text-white tracking-tight">{activeMission.title}</h3>
-                  </div>
-                  <Link
-                    href={`/missions/${activeMission.id}`}
-                    className="text-xs font-mono text-zinc-300 hover:text-white underline underline-offset-8 flex items-center gap-1.5"
-                  >
-                    <span>ENTER WORKSPACE</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-xs font-mono pt-2">
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase block mb-1">STATUS</span>
-                    <span className="text-white font-semibold">{activeMission.status}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase block mb-1">PLAN VERSION</span>
-                    <span className="text-zinc-200">v{activeMission.plan_version || 1}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase block mb-1">GRAPH HEALING</span>
-                    <span className="text-zinc-200">{activeMission.replan_count || 0} Replans</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-zinc-400 uppercase block mb-1">PROGRESS</span>
-                    <span className="text-white font-semibold">{activeMission.progress}%</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-12 text-center text-xs font-mono text-zinc-500 border border-white/5 rounded-3xl">
-                No mission currently active. Dispatch a directive to synthesize graph.
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ==================================================== */}
-        {/* SECTION 4: AGENT ROSTER                              */}
-        {/* ==================================================== */}
-        <section className="relative min-h-screen flex flex-col justify-center px-6 sm:px-16 py-32 z-20 pointer-events-auto pb-44">
-          <div className="max-w-4xl mx-auto w-full space-y-8">
-            <div className="space-y-3">
-              <span className="text-[11px] font-mono tracking-[0.35em] text-zinc-400 uppercase font-semibold">
-                // 04 AUTONOMOUS FLEET
-              </span>
-              <h2 className="text-4xl sm:text-5xl font-light tracking-tight text-white">
-                Specialized Agents
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                { role: "PLANNER", title: "Mission Planner", desc: "Decomposes unstructured intent into validated dependency DAGs." },
-                { role: "CODER", title: "Code Synthesizer", desc: "Writes, refactors, and tests code within isolated sandboxes." },
-                { role: "AUDITOR", title: "Security Gate", desc: "Enforces strict tool access control and human approval gates." },
-                { role: "RESEARCHER", title: "Knowledge Agent", desc: "Retrieves context from cross-session episodic & vector memory." },
-              ].map((ag) => (
-                <div
-                  key={ag.role}
-                  className="p-6 rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md space-y-2 hover:border-white/25 transition-all"
-                >
-                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                    <span>{ag.role}</span>
-                    <span>ONLINE</span>
-                  </div>
-                  <h4 className="text-base font-semibold text-white">{ag.title}</h4>
-                  <p className="text-xs text-zinc-400 leading-relaxed font-sans">{ag.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  // ----------------------------------------------------
-  // 2D DASHBOARD FALLBACK MODE (When 3D is OFF)
-  // ----------------------------------------------------
   return (
-    <div className="max-w-7xl mx-auto space-y-8 text-foreground">
+    <div className="max-w-7xl mx-auto space-y-8 text-foreground pb-16">
+      {/* 1. Header & Telemetry Overview */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-5">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground font-mono flex items-center gap-2">
-            <span>Agentic OS</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-              2D COMMAND CENTER
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground font-mono flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_10px_#22d3ee]" />
+              <span>Agentic OS</span>
+            </h1>
+            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+              AUTONOMOUS COMMAND CENTER
             </span>
-          </h1>
+          </div>
           <p className="text-xs text-muted-foreground font-mono">
-            Autonomous multi-agent orchestration, dynamic DAG replanning, and cryptographic tool security.
+            Deterministic DAG orchestration, multi-agent synthesis, and autonomous graph replanning.
           </p>
         </div>
 
+        {/* Global Action Buttons */}
         <div className="flex items-center gap-2.5">
           <button
             onClick={handleSeedData}
@@ -432,31 +250,356 @@ export default function HomePage() {
           <button
             onClick={handleRunDemoScenario}
             disabled={isDemoRunning}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-            <span>Run Demo Loop</span>
+            <span>{isDemoRunning ? "Running Demo..." : "Run Complete Demo Loop"}</span>
           </button>
         </div>
       </div>
 
-      {activeMission && (
-        <div className="p-6 rounded-3xl bg-surface border border-border space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold">{activeMission.title}</h3>
-            <Link
-              href={`/missions/${activeMission.id}`}
-              className="px-4 py-2 rounded-xl bg-surface-raised border border-border text-xs font-semibold flex items-center gap-1.5"
-            >
-              <span>Open Mission</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+      {/* 2. System Status KPI Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
+        <div className="p-4 rounded-2xl bg-surface/60 border border-border/80 backdrop-blur-md space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>ACTIVE MISSIONS</span>
+            <GitBranch className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="flex justify-center py-4">
-            <AICoreSphere state={coreState} size={160} sublabel={`CORE • ${coreState}`} />
+          <div className="text-2xl font-bold text-foreground">{safeMissions.length}</div>
+          <div className="text-[10px] text-cyan-400 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            <span>{safeMissions.filter((m) => m.status === "RUNNING").length} IN FLIGHT</span>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-surface/60 border border-border/80 backdrop-blur-md space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>EXECUTED TASKS</span>
+            <ListTodo className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{tasks.length}</div>
+          <div className="text-[10px] text-purple-400">
+            {completedTasksCount} COMPLETED • {runningTasksCount} RUNNING
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-surface/60 border border-border/80 backdrop-blur-md space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>HITL APPROVALS</span>
+            <ShieldAlert className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">{approvals.length}</div>
+          <div className="text-[10px] text-amber-400">
+            {approvals.length > 0 ? "ACTION REQUIRED" : "GATES CLEAR"}
+          </div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-surface/60 border border-border/80 backdrop-blur-md space-y-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>AGENT FLEET</span>
+            <Bot className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-bold text-foreground">5 / 5</div>
+          <div className="text-[10px] text-emerald-400">ONLINE • READY</div>
+        </div>
+      </div>
+
+      {/* 3. Global Directive Synthesis Terminal */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-surface/80 border border-border/90 backdrop-blur-xl shadow-2xl relative overflow-hidden space-y-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs font-mono tracking-wider text-cyan-400 uppercase">
+            <Terminal className="w-4 h-4" />
+            <span>Autonomous Directive Engine</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-semibold text-foreground tracking-tight">
+            What goal should the agent fleet execute?
+          </h2>
+        </div>
+
+        <form onSubmit={handleCreateMissionFromGoal} className="space-y-4">
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              value={goalInput}
+              onChange={(e) => setGoalInput(e.target.value)}
+              disabled={isSubmitting}
+              placeholder="Assign high-level intent... (e.g. 'Build and deploy full-stack telemetry service')"
+              className="w-full bg-background/90 border border-border/90 rounded-2xl px-5 py-3.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 font-mono transition-all pr-36 shadow-inner"
+            />
+            <button
+              type="submit"
+              disabled={isSubmitting || !goalInput.trim()}
+              className="absolute right-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary-hover text-white text-xs font-semibold transition-all flex items-center gap-2 disabled:opacity-30 shadow-md shadow-primary/25"
+            >
+              {isSubmitting ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <>
+                  <span>DISPATCH</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Suggested Directives */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-[10px] font-mono uppercase text-muted-foreground mr-1">
+              Suggestions:
+            </span>
+            {QUICK_DIRECTIVES.map((d, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setGoalInput(d)}
+                className="text-xs font-mono px-3 py-1 rounded-lg bg-surface-raised/70 hover:bg-surface-raised border border-border text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {d.length > 45 ? `${d.slice(0, 42)}...` : d}
+              </button>
+            ))}
+          </div>
+        </form>
+      </div>
+
+      {/* 4. Active Mission Showcase & AICore */}
+      {activeMission && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Mission Overview Card */}
+          <div className="lg:col-span-2 p-6 sm:p-8 rounded-3xl bg-surface/70 border border-border/80 backdrop-blur-xl space-y-6 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono tracking-widest uppercase text-cyan-400 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span>TARGET DIRECTIVE</span>
+                </span>
+                <span
+                  className={cn(
+                    "text-xs font-mono px-2.5 py-0.5 rounded-full border font-semibold",
+                    activeMission.status === "RUNNING"
+                      ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+                      : activeMission.status === "COMPLETED"
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                      : activeMission.status === "WAITING_APPROVAL"
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      : "bg-surface-raised text-muted-foreground border-border"
+                  )}
+                >
+                  {activeMission.status}
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
+                  {activeMission.title}
+                </h3>
+                {activeMission.description && (
+                  <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed font-mono">
+                    {activeMission.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Mission Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-mono text-muted-foreground">
+                  <span>DAG Execution Progress</span>
+                  <span className="text-foreground font-semibold">{activeMission.progress || 0}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-surface-raised overflow-hidden border border-border/80">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary to-cyan-400 transition-all duration-500"
+                    style={{ width: `${Math.max(activeMission.progress || 0, 5)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Metadata & Workspace Link */}
+            <div className="pt-4 border-t border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="grid grid-cols-3 gap-6 text-xs font-mono">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">PLAN VERSION</span>
+                  <span className="text-foreground font-semibold">v{activeMission.plan_version || 1}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">GRAPH HEALING</span>
+                  <span className="text-purple-400 font-semibold">{activeMission.replan_count || 0} Replans</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">TASKS</span>
+                  <span className="text-foreground font-semibold">{tasks.length} Nodes</span>
+                </div>
+              </div>
+
+              <Link
+                href={`/missions/${activeMission.id}`}
+                className="px-5 py-2.5 rounded-xl bg-surface-raised hover:bg-surface border border-border text-xs font-semibold text-foreground flex items-center justify-center gap-2 transition-all group shrink-0"
+              >
+                <span>OPEN WORKSPACE DAG</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform text-cyan-400" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Interactive AI Core Sphere Visualizer Card */}
+          <div className="p-6 rounded-3xl bg-surface/70 border border-border/80 backdrop-blur-xl flex flex-col items-center justify-center text-center space-y-3 relative overflow-hidden">
+            <div className="absolute top-4 left-4 text-[10px] font-mono text-muted-foreground tracking-widest uppercase">
+              // NEURAL SPATIAL CORE
+            </div>
+            <div className="py-2">
+              <AICoreSphere state={coreState} size={150} sublabel={`CORE • ${coreState}`} />
+            </div>
+            <div className="space-y-1 font-mono">
+              <div className="text-xs text-foreground font-semibold uppercase tracking-wider">
+                RUNTIME STATE: <span className="text-cyan-400">{coreState}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground max-w-xs">
+                Active neural synthesis & deterministic graph orchestration
+              </p>
+            </div>
           </div>
         </div>
       )}
+
+      {/* 5. Autonomous Fleet Roster */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <h3 className="text-base font-bold text-foreground font-mono flex items-center gap-2">
+              <Bot className="w-4 h-4 text-cyan-400" />
+              <span>Autonomous Agent Fleet</span>
+            </h3>
+            <p className="text-xs text-muted-foreground font-mono">
+              Specialized domain agents executing in parallel sandboxes
+            </p>
+          </div>
+          <Link
+            href="/agents"
+            className="text-xs font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+          >
+            <span>View All Agents</span>
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {AGENT_FLEET.map((ag) => (
+            <div
+              key={ag.role}
+              className="p-5 rounded-2xl bg-surface/60 border border-border/80 backdrop-blur-md space-y-2.5 hover:border-border transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className={cn("text-[10px] font-mono px-2 py-0.5 rounded border font-semibold", ag.color)}>
+                  {ag.role}
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>ONLINE</span>
+                </span>
+              </div>
+              <h4 className="text-sm font-semibold text-foreground">{ag.name}</h4>
+              <p className="text-xs text-muted-foreground font-sans leading-relaxed">
+                {ag.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 6. Live Activity Stream & Recent Missions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Missions */}
+        <div className="p-6 rounded-3xl bg-surface/70 border border-border/80 backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-purple-400" />
+              <span>Recent Execution Missions</span>
+            </h3>
+            <Link
+              href="/missions"
+              className="text-xs font-mono text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <span>Explore</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+
+          <div className="space-y-2.5">
+            {safeMissions.slice(0, 4).map((m) => (
+              <Link
+                key={m.id}
+                href={`/missions/${m.id}`}
+                className="p-3.5 rounded-xl bg-surface-raised/60 hover:bg-surface-raised border border-border/80 flex items-center justify-between transition-all group"
+              >
+                <div className="space-y-1 min-w-0 pr-3">
+                  <div className="text-xs font-semibold text-foreground truncate group-hover:text-cyan-400 transition-colors">
+                    {m.title}
+                  </div>
+                  <div className="text-[10px] font-mono text-muted-foreground">
+                    PLAN v{m.plan_version || 1} • {m.replan_count || 0} REPLANS
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span
+                    className={cn(
+                      "text-[10px] font-mono px-2 py-0.5 rounded border font-semibold",
+                      m.status === "RUNNING"
+                        ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+                        : m.status === "COMPLETED"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                        : "bg-surface text-muted-foreground border-border"
+                    )}
+                  >
+                    {m.status}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Live Domain Event Feed */}
+        <div className="p-6 rounded-3xl bg-surface/70 border border-border/80 backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold font-mono text-foreground flex items-center gap-2">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              <span>Live System Event Stream</span>
+            </h3>
+            <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>WS LIVE</span>
+            </span>
+          </div>
+
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1 font-mono">
+            {liveEvents.length > 0 ? (
+              liveEvents.slice(0, 6).map((ev, idx) => (
+                <div
+                  key={idx}
+                  className="p-2.5 rounded-xl bg-surface-raised/40 border border-border/60 text-xs flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border text-cyan-400 shrink-0">
+                      {ev.event_type}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground truncate">
+                      {ev.payload?.message || ev.payload?.title || ev.payload?.reason || JSON.stringify(ev.payload || {})}
+                    </span>
+                  </div>
+                  <span className="text-[9px] text-muted-foreground shrink-0">
+                    {new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-xs text-muted-foreground border border-dashed border-border rounded-2xl">
+                Listening for real-time WebSocket domain events...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

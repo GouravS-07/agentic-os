@@ -39,6 +39,17 @@ import { InterlockingDiagram } from "@/world/renderSvg/InterlockingDiagram";
 import { Docket } from "@/world/ui/Docket";
 import { useWorldStore } from "@/world/state/worldStore";
 import { evaluateWorldMode } from "@/world/config";
+import dynamic from "next/dynamic";
+
+// Dynamically import SpatialMissionCanvas (Three.js — client-side only)
+const SpatialMissionCanvas = dynamic(
+  () => import("@/spatial/SpatialMissionCanvas").then((m) => m.SpatialMissionCanvas),
+  { ssr: false, loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-[#060608]">
+      <span className="text-[10px] font-mono text-[#3a3a4a]">Initialising spatial workspace...</span>
+    </div>
+  )}
+);
 
 export default function MissionDetailPage() {
   const params = useParams();
@@ -53,16 +64,9 @@ export default function MissionDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [liveMissionEvents, setLiveMissionEvents] = useState<EventItem[]>([]);
   const [activeTab, setActiveTab] = useState<"dag" | "evolution" | "memory">("dag");
-
-  const [viewMode, setViewMode] = useState<"INTERLOCKING" | "STANDARD">("INTERLOCKING");
+  const [viewMode, setViewMode] = useState<"INTERLOCKING" | "STANDARD" | "SPATIAL">("STANDARD");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const { openDocket, closeDocket } = useWorldStore();
-
-  useEffect(() => {
-    if (!evaluateWorldMode()) {
-      setViewMode("STANDARD");
-    }
-  }, []);
 
   const handleSelectStation = (taskId: string | null) => {
     setSelectedTaskId(taskId);
@@ -318,19 +322,38 @@ export default function MissionDetailPage() {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Interlocking Diagram / Standard DAG Toggle */}
+          {/* View mode toggle: STANDARD → SPATIAL → INTERLOCKING */}
           <button
-            onClick={() => setViewMode((v) => (v === "INTERLOCKING" ? "STANDARD" : "INTERLOCKING"))}
+            onClick={() =>
+              setViewMode((v) => {
+                if (v === "STANDARD") return "SPATIAL";
+                if (v === "SPATIAL") return "INTERLOCKING";
+                return "STANDARD";
+              })
+            }
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-bold border transition-all",
-              viewMode === "INTERLOCKING"
+              viewMode === "SPATIAL"
+                ? "bg-[#0d1a10] text-[#90c870] border-[#3a6030] shadow-sm"
+                : viewMode === "INTERLOCKING"
                 ? "bg-[#EFE9DC] text-[#121214] border-[#121214] shadow-sm"
                 : "bg-surface-raised border-border/80 text-muted-foreground hover:text-foreground"
             )}
-            title="Toggle Interlocking / Standard Visualizer"
+            title="Cycle view: Standard DAG → Spatial 3D → Interlocking Diagram"
           >
-            <span className={cn("w-2 h-2 rounded-none", viewMode === "INTERLOCKING" ? "bg-[#C98A2B]" : "bg-muted-foreground")} />
-            <span>{viewMode === "INTERLOCKING" ? "INTERLOCKING DIAGRAM" : "STANDARD DAG"}</span>
+            <span
+              className={cn(
+                "w-2 h-2 rounded-none",
+                viewMode === "SPATIAL" ? "bg-[#5a9040]" : viewMode === "INTERLOCKING" ? "bg-[#C98A2B]" : "bg-muted-foreground"
+              )}
+            />
+            <span>
+              {viewMode === "SPATIAL"
+                ? "SPATIAL VIEW"
+                : viewMode === "INTERLOCKING"
+                ? "INTERLOCKING DIAGRAM"
+                : "STANDARD DAG"}
+            </span>
           </button>
 
           <button
@@ -490,6 +513,16 @@ export default function MissionDetailPage() {
               planRevisions={planRevisions}
               selectedTaskId={selectedTaskId}
               onSelectTask={handleSelectStation}
+            />
+          </div>
+        ) : viewMode === "SPATIAL" ? (
+          <div className="w-full h-[660px] rounded-3xl overflow-hidden border border-[#1a1a22] shadow-2xl relative">
+            <SpatialMissionCanvas
+              mission={mission}
+              tasks={tasks}
+              onTaskSelect={(id) => {
+                setSelectedTaskId(id);
+              }}
             />
           </div>
         ) : (
