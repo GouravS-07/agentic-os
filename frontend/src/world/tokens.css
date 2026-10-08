@@ -1,0 +1,84 @@
+/* AGENTIC OS — INTERLOCKING TOKENS (Scoped under .world) */
+
+.world {
+  /* Core Material & Board Palette */
+  --ivory: #EFE9DC;
+  --bone: #E4DCCB;
+  --paper-shade: #CFC6B2;
+  --graphite: #3A3A3C;
+  --charcoal: #232325;
+  --ink: #121214;
+  --metal: #A8A69E;
+  
+  /* State Accent Semantics */
+  --amber: #C98A2B;      /* Live activity / Human awaiting / Energy flow */
+  --danger: #A63A32;     /* Failure / Closed block only */
+  --clear: #DDE6D3;      /* Settled / Completed pale green-white */
+  
+  /* Typography Variables */
+  --font-serif-hero: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-signage: "Barlow Condensed", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-technical: "IBM Plex Mono", "JetBrains Mono", "Courier New", monospace;
+  
+  /* Surfaces and Shadow Tokens */
+  --shadow-paper: 0 4px 16px -2px rgba(18, 18, 20, 0.08), 0 1px 3px 0 rgba(18, 18, 20, 0.04);
+  --shadow-plate: 0 6px 20px -3px rgba(18, 18, 20, 0.12), 0 2px 6px -1px rgba(18, 18, 20, 0.06);
+  --shadow-docket: 0 12px 32px -4px rgba(18, 18, 20, 0.16), 0 4px 12px -2px rgba(18, 18, 20, 0.08);
+
+  background-color: var(--ivory);
+  color: var(--ink);
+  font-family: var(--font-signage);
+  letter-spacing: 0.02em;
+}
+
+/* Base world typography and structural classes */
+.world .font-technical {
+  font-family: var(--font-technical);
+}
+
+.world .font-signage {
+  font-family: var(--font-signage);
+}
+
+.world .font-hero {
+  font-family: var(--font-serif-hero);
+}
+
+/* Hairline Rail and Grid Rules */
+.world-rail-line {
+  stroke: var(--ink);
+  stroke-width: 1px;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.world-rail-dash-amber {
+  stroke: var(--amber);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 4;
+}
+
+/* Interlocking Station Plate Base */
+.world-station-plate {
+  background-color: var(--bone);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow-plate);
+  color: var(--ink);
+}
+
+/* Split-Flap Departure Style */
+.world-split-flap {
+  background-color: var(--charcoal);
+  color: var(--bone);
+  font-family: var(--font-technical);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* Docket Paper Panel */
+.world-docket-panel {
+  background-color: var(--ivory);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow-docket);
+  color: var(--ink);
+}
