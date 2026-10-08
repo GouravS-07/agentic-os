@@ -1,12 +1,12 @@
 /**
- * AGENTIC OS — Spatial Camera Rig (Refined Phase B)
- * Spring-based camera with frameloop="demand" compatibility.
- * Tuned for 60-75% viewport occupancy and natural diagonal perspective.
+ * AGENTIC OS — Spatial Camera Rig (Phase C)
+ * Authored camera transition runner with quart-out easing (320ms duration).
+ * frameloop="demand" compatible — actively invalidates only during transitions, still at rest.
  *
  * Perspective:
- * - Pitch: ~32° (slight elevation to reveal top info surfaces and depth).
- * - Yaw: -10° (gentle diagonal to reveal side chassis fins and sockets).
- * - Settle time: 250-350ms. Still when idle.
+ * - OVERVIEW: Pitch ~30°, Yaw ~-14° (full DAG readable)
+ * - TASK FOCUS: Pitch ~32°, Yaw ~-18° (3/4 dramatic angle framing front placard, core rails, port sockets)
+ * - DEPENDENCY FOCUS: Pitch ~33°, Yaw ~-14° (framed group of selected + prerequisites + dependents)
  */
 
 "use client";
@@ -16,20 +16,14 @@ import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpatialMissionStore } from "./state/useSpatialMissionStore";
 
-// Spring constants — snappy 250-350ms settle
-const SPRING_STIFFNESS = 0.095;
-const SPRING_DAMPING = 0.74;
-const SETTLE_THRESHOLD = 0.003;
-
-// Default architectural perspective: pitch ~30°, yaw ~-14°
-const DEFAULT_PITCH = (30 * Math.PI) / 180;
-const DEFAULT_YAW = (-14 * Math.PI) / 180;
+// Transition Duration in ms (250–400ms range)
+const TRANSITION_DURATION_MS = 320;
 
 function cameraPositionFromTarget(
   target: THREE.Vector3,
   distance: number,
-  pitch: number = DEFAULT_PITCH,
-  yaw: number = DEFAULT_YAW
+  pitch: number,
+  yaw: number
 ): THREE.Vector3 {
   return new THREE.Vector3(
     target.x + distance * Math.cos(pitch) * Math.sin(yaw),
@@ -38,24 +32,46 @@ function cameraPositionFromTarget(
   );
 }
 
+// Quartic out easing: f(t) = 1 - (1 - t)^4
+function easeQuartOut(t: number): number {
+  const inv = 1 - t;
+  return 1 - inv * inv * inv * inv;
+}
+
 export function SpatialCameraRig() {
   const { camera, invalidate } = useThree();
   const store = useSpatialMissionStore();
 
-  const initPos = cameraPositionFromTarget(new THREE.Vector3(0, 0, 0), store.cameraDistance);
-  const currentPos = useRef(initPos.clone());
-  const currentTarget = useRef(new THREE.Vector3(0, 0, 0));
-  const velocityPos = useRef(new THREE.Vector3(0, 0, 0));
-  const velocityTarget = useRef(new THREE.Vector3(0, 0, 0));
+  const initTarget = new THREE.Vector3(...store.cameraTarget);
+  const initPos = cameraPositionFromTarget(
+    initTarget,
+    store.cameraDistance,
+    store.cameraPitch,
+    store.cameraYaw
+  );
 
+  const currentPos = useRef(initPos.clone());
+  const currentTarget = useRef(initTarget.clone());
+
+  // Transition state
+  const isTransitioning = useRef(false);
+  const transitionStartTime = useRef(0);
+  const startPos = useRef(initPos.clone());
+  const startTarget = useRef(initTarget.clone());
   const goalPos = useRef(initPos.clone());
-  const goalTarget = useRef(new THREE.Vector3(0, 0, 0));
+  const goalTarget = useRef(initTarget.clone());
 
   const lastFocusTrigger = useRef(store.focusTrigger);
 
+  // Initialize camera position on mount
   useEffect(() => {
     const tgt = new THREE.Vector3(...store.cameraTarget);
-    const pos = cameraPositionFromTarget(tgt, store.cameraDistance);
+    const pos = cameraPositionFromTarget(
+      tgt,
+      store.cameraDistance,
+      store.cameraPitch,
+      store.cameraYaw
+    );
     currentPos.current.copy(pos);
     currentTarget.current.copy(tgt);
     goalPos.current.copy(pos);
@@ -65,52 +81,64 @@ export function SpatialCameraRig() {
     invalidate();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Retarget whenever focusTrigger fires
   useEffect(() => {
     if (store.focusTrigger !== lastFocusTrigger.current) {
       lastFocusTrigger.current = store.focusTrigger;
-      const tgt = new THREE.Vector3(...store.cameraTarget);
-      goalTarget.current.copy(tgt);
-      goalPos.current.copy(cameraPositionFromTarget(tgt, store.cameraDistance));
+
+      // Retarget immediately from wherever current camera is right now
+      startPos.current.copy(camera.position);
+      startTarget.current.copy(currentTarget.current);
+
+      const targetVec = new THREE.Vector3(...store.cameraTarget);
+      goalTarget.current.copy(targetVec);
+      goalPos.current.copy(
+        cameraPositionFromTarget(
+          targetVec,
+          store.cameraDistance,
+          store.cameraPitch,
+          store.cameraYaw
+        )
+      );
+
+      transitionStartTime.current = performance.now();
+      isTransitioning.current = true;
       invalidate();
     }
-  }, [store.focusTrigger, store.cameraTarget, store.cameraDistance, invalidate]);
+  }, [
+    store.focusTrigger,
+    store.cameraTarget,
+    store.cameraDistance,
+    store.cameraPitch,
+    store.cameraYaw,
+    camera,
+    invalidate,
+  ]);
 
   useFrame(() => {
-    const deltaTarget = goalTarget.current.clone().sub(currentTarget.current);
-    const deltaPos = goalPos.current.clone().sub(currentPos.current);
+    if (!isTransitioning.current) return;
 
-    const isTargetSettled =
-      deltaTarget.length() < SETTLE_THRESHOLD &&
-      velocityTarget.current.length() < SETTLE_THRESHOLD;
-    const isPosSettled =
-      deltaPos.length() < SETTLE_THRESHOLD &&
-      velocityPos.current.length() < SETTLE_THRESHOLD;
+    const now = performance.now();
+    const elapsed = now - transitionStartTime.current;
+    const rawProgress = Math.min(1, Math.max(0, elapsed / TRANSITION_DURATION_MS));
+    const easedProgress = easeQuartOut(rawProgress);
 
-    if (isTargetSettled && isPosSettled) {
-      if (!currentTarget.current.equals(goalTarget.current)) {
-        currentTarget.current.copy(goalTarget.current);
-        currentPos.current.copy(goalPos.current);
-        camera.position.copy(currentPos.current);
-        camera.lookAt(currentTarget.current);
-        invalidate();
-      }
-      return;
-    }
-
-    velocityTarget.current
-      .add(deltaTarget.multiplyScalar(SPRING_STIFFNESS))
-      .multiplyScalar(SPRING_DAMPING);
-    currentTarget.current.add(velocityTarget.current);
-
-    velocityPos.current
-      .add(deltaPos.multiplyScalar(SPRING_STIFFNESS))
-      .multiplyScalar(SPRING_DAMPING);
-    currentPos.current.add(velocityPos.current);
+    currentPos.current.lerpVectors(startPos.current, goalPos.current, easedProgress);
+    currentTarget.current.lerpVectors(startTarget.current, goalTarget.current, easedProgress);
 
     camera.position.copy(currentPos.current);
     camera.lookAt(currentTarget.current);
 
-    invalidate();
+    if (rawProgress >= 1) {
+      // Transition complete: latch precisely to goal and rest
+      isTransitioning.current = false;
+      camera.position.copy(goalPos.current);
+      camera.lookAt(goalTarget.current);
+      invalidate();
+    } else {
+      // Keep requesting frames while in motion
+      invalidate();
+    }
   });
 
   return null;

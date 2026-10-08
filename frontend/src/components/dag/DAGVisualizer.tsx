@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils";
 interface DAGVisualizerProps {
   tasks: Task[];
   onTaskAction?: (taskId: string, action: "start" | "complete" | "fail" | "execute") => void;
+  selectedTaskId?: string | null;
+  onSelectTask?: (taskId: string | null) => void;
 }
 
 const STATUS_ICONS: Record<TaskStatus, React.ComponentType<{ className?: string }>> = {
@@ -88,8 +90,23 @@ const STATUS_CONFIGS: Record<
   },
 };
 
-export function DAGVisualizer({ tasks, onTaskAction }: DAGVisualizerProps) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+export function DAGVisualizer({
+  tasks,
+  onTaskAction,
+  selectedTaskId: propSelectedTaskId,
+  onSelectTask,
+}: DAGVisualizerProps) {
+  const [internalSelectedTaskId, setInternalSelectedTaskId] = useState<string | null>(null);
+
+  const selectedTaskId =
+    propSelectedTaskId !== undefined ? propSelectedTaskId : internalSelectedTaskId;
+
+  const setSelectedTaskId = (id: string | null) => {
+    if (propSelectedTaskId === undefined) {
+      setInternalSelectedTaskId(id);
+    }
+    onSelectTask?.(id);
+  };
 
   if (!tasks || tasks.length === 0) {
     return (

@@ -69,7 +69,16 @@ export default function MissionDetailPage() {
   const [activeTab, setActiveTab] = useState<"dag" | "evolution" | "memory">("dag");
   const [viewMode, setViewMode] = useState<"INTERLOCKING" | "STANDARD" | "SPATIAL">("STANDARD");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const { openDocket, closeDocket } = useWorldStore();
+  const { openDocket, closeDocket, activeDocket } = useWorldStore();
+
+  // Synchronize activeDocket with selectedTaskId (e.g. when user dismisses the docket with [X ESC])
+  useEffect(() => {
+    if (!activeDocket && selectedTaskId) {
+      setSelectedTaskId(null);
+    } else if (activeDocket && activeDocket.type === "STATION" && activeDocket.id !== selectedTaskId) {
+      setSelectedTaskId(activeDocket.id);
+    }
+  }, [activeDocket, selectedTaskId]);
 
   // Authoritative SceneMission computed directly via the reconcile pipeline
   const sceneMission: SceneMission | null = React.useMemo(() => {
@@ -607,7 +616,12 @@ export default function MissionDetailPage() {
           </div>
         ) : (
           <div className="rounded-3xl bg-surface/75 border border-border/90 p-6 backdrop-blur-xl shadow-xl">
-            <DAGVisualizer tasks={tasks} onTaskAction={handleTaskAction} />
+            <DAGVisualizer
+              tasks={tasks}
+              onTaskAction={handleTaskAction}
+              selectedTaskId={selectedTaskId}
+              onSelectTask={handleSelectStation}
+            />
           </div>
         )
       )}

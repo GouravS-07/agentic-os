@@ -178,10 +178,58 @@ export interface SpatialConduit3DProps {
   route: SceneRoute;
   start: [number, number, number];
   end: [number, number, number];
+  isSelectedRoute?: boolean;
+  isDownstreamRoute?: boolean;
+  isDimmed?: boolean;
 }
 
-export function SpatialConduit3D({ route, start, end }: SpatialConduit3DProps) {
-  const palette = CONDUIT_PALETTE[route.state] || CONDUIT_PALETTE.PENDING_DASHED;
+export function SpatialConduit3D({
+  route,
+  start,
+  end,
+  isSelectedRoute = false,
+  isDownstreamRoute = false,
+  isDimmed = false,
+}: SpatialConduit3DProps) {
+  const basePalette = CONDUIT_PALETTE[route.state] || CONDUIT_PALETTE.PENDING_DASHED;
+
+  const palette = useMemo(() => {
+    if (isSelectedRoute) {
+      // Solid authoritative emphasized mechanical contrast (NO neon, NO glowing laser effect)
+      return {
+        casing: "#3e485e",
+        busBar: "#242a3a",
+        flange: "#526280",
+        clamp: "#7084a8",
+        wedge: "#96aecd",
+        stanchion: "#252b38",
+      };
+    }
+    if (isDownstreamRoute) {
+      // Slightly more visible downstream route
+      return {
+        casing: "#303746",
+        busBar: "#1a1f2c",
+        flange: "#404b60",
+        clamp: "#586782",
+        wedge: "#788aa8",
+        stanchion: "#1c212c",
+      };
+    }
+    if (isDimmed) {
+      // Dimmed background route
+      return {
+        casing: "#161922",
+        busBar: "#0e1017",
+        flange: "#1e222e",
+        clamp: "#282e3e",
+        wedge: "#323a4e",
+        stanchion: "#12141c",
+      };
+    }
+    return basePalette;
+  }, [isSelectedRoute, isDownstreamRoute, isDimmed, basePalette]);
+
   const isFractured = route.state === "FRACTURED_RED";
 
   const [startX, startY, startZ] = start;

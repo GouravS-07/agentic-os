@@ -27,7 +27,7 @@
 
 "use client";
 
-import React, { useRef, useCallback, useMemo } from "react";
+import React, { useRef, useCallback, useMemo, useState } from "react";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { Text } from "@react-three/drei";
@@ -317,6 +317,9 @@ export interface TaskBlock3DProps {
   hasInputs?: boolean;
   hasOutputs?: boolean;
   isSelected?: boolean;
+  isPrerequisite?: boolean;
+  isDependent?: boolean;
+  isDimmed?: boolean;
   onSelect?: (stationId: string) => void;
 }
 
@@ -326,10 +329,14 @@ export function TaskBlock3D({
   hasInputs = false,
   hasOutputs = false,
   isSelected = false,
+  isPrerequisite = false,
+  isDependent = false,
+  isDimmed = false,
   onSelect,
 }: TaskBlock3DProps) {
   const { invalidate } = useThree();
   const groupRef = useRef<THREE.Group>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   const status = station.state;
   const statusTelemetry = STATE_TELEMETRY[status] || "STANDBY";
@@ -356,19 +363,51 @@ export function TaskBlock3D({
     [station.id, onSelect, invalidate]
   );
 
-  // Selected lift elevation (+0.08m)
+  const handlePointerOver = useCallback(
+    (e: any) => {
+      e.stopPropagation();
+      document.body.style.cursor = "pointer";
+      setIsHovered(true);
+      invalidate();
+    },
+    [invalidate]
+  );
+
+  const handlePointerOut = useCallback(
+    (e: any) => {
+      document.body.style.cursor = "auto";
+      setIsHovered(false);
+      invalidate();
+    },
+    [invalidate]
+  );
+
+  // Selected lift elevation (+0.16m), prerequisite lift (+0.05m)
+  const elevation = isSelected ? 0.16 : isPrerequisite ? 0.05 : 0;
   const finalPos: [number, number, number] = [
     position[0],
-    position[1] + (isSelected ? 0.08 : 0),
+    position[1] + elevation,
     position[2],
   ];
 
+  const fillOpacity = isDimmed ? 0.35 : 1.0;
+
   return (
-    <group ref={groupRef} position={finalPos} onClick={handleClick}>
+    <group
+      ref={groupRef}
+      position={finalPos}
+      onClick={handleClick}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+    >
       {/* ── GROUND CONTACT SHADOW BASE PLATE ── */}
       <mesh position={[0, 0.005, 0]} receiveShadow>
         <planeGeometry args={[MODULE_WIDTH + 0.6, MODULE_DEPTH + 0.6]} />
-        <meshBasicMaterial color="#07090e" transparent opacity={0.65} />
+        <meshBasicMaterial
+          color="#07090e"
+          transparent
+          opacity={isDimmed ? 0.28 : isSelected ? 0.85 : 0.65}
+        />
       </mesh>
 
       {/* ── LAYER 1: STRUCTURAL CHASSIS ── */}
@@ -442,6 +481,7 @@ export function TaskBlock3D({
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.11}
           color={PALETTE.text.badge}
+          fillOpacity={fillOpacity}
           anchorX="center"
           anchorY="middle"
           letterSpacing={0.08}
@@ -452,7 +492,7 @@ export function TaskBlock3D({
         {/* Divider Tick */}
         <mesh position={[-MODULE_WIDTH / 2 + 0.74, 0.015, 0]}>
           <boxGeometry args={[0.015, 0.01, 0.16]} />
-          <meshStandardMaterial color="#4a5266" roughness={0.5} />
+          <meshStandardMaterial color="#4a5266" roughness={0.5} transparent opacity={fillOpacity} />
         </mesh>
 
         {/* Concise Task Title (Left side) */}
@@ -462,6 +502,7 @@ export function TaskBlock3D({
           fontSize={0.115}
           maxWidth={MODULE_WIDTH - 2.1}
           color={PALETTE.text.title}
+          fillOpacity={fillOpacity}
           anchorX="left"
           anchorY="middle"
           letterSpacing={-0.01}
@@ -476,6 +517,7 @@ export function TaskBlock3D({
           rotation={[-Math.PI / 2, 0, 0]}
           fontSize={0.085}
           color={stateTextColor}
+          fillOpacity={fillOpacity}
           anchorX="right"
           anchorY="middle"
           letterSpacing={0.06}
@@ -493,6 +535,34 @@ export function TaskBlock3D({
               color={PALETTE.selectionGlow}
               roughness={0.35}
               metalness={0.6}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {/* ── PREREQUISITE ROUTE HIGHLIGHT ── */}
+      {isPrerequisite && !isSelected && (
+        <group position={[0, BASE_HEIGHT / 2, 0]}>
+          <mesh>
+            <boxGeometry args={[MODULE_WIDTH + 0.18, 0.015, MODULE_DEPTH + 0.18]} />
+            <meshStandardMaterial
+              color="#38749a"
+              roughness={0.45}
+              metalness={0.55}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {/* ── HOVER BOUNDARY ACCENT ── */}
+      {isHovered && !isSelected && !isPrerequisite && (
+        <group position={[0, BASE_HEIGHT / 2, 0]}>
+          <mesh>
+            <boxGeometry args={[MODULE_WIDTH + 0.12, 0.01, MODULE_DEPTH + 0.12]} />
+            <meshStandardMaterial
+              color="#3a4456"
+              roughness={0.6}
+              metalness={0.4}
             />
           </mesh>
         </group>
