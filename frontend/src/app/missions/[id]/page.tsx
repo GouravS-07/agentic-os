@@ -39,6 +39,8 @@ import { InterlockingDiagram } from "@/world/renderSvg/InterlockingDiagram";
 import { Docket } from "@/world/ui/Docket";
 import { useWorldStore } from "@/world/state/worldStore";
 import { evaluateWorldMode } from "@/world/config";
+import { reconcileMission, createInitialSceneModel } from "@/world/adapter/reconcile";
+import type { SceneMission } from "@/world/adapter/types";
 import dynamic from "next/dynamic";
 
 // Dynamically import SpatialMissionCanvas (Three.js — client-side only)
@@ -60,6 +62,7 @@ export default function MissionDetailPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [planRevisions, setPlanRevisions] = useState<PlanRevision[]>([]);
   const [missionMemories, setMissionMemories] = useState<Memory[]>([]);
+  const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [liveMissionEvents, setLiveMissionEvents] = useState<EventItem[]>([]);
@@ -67,6 +70,72 @@ export default function MissionDetailPage() {
   const [viewMode, setViewMode] = useState<"INTERLOCKING" | "STANDARD" | "SPATIAL">("STANDARD");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const { openDocket, closeDocket } = useWorldStore();
+
+  // Authoritative SceneMission computed directly via the reconcile pipeline
+  const sceneMission: SceneMission | null = React.useMemo(() => {
+    if (!mission) return null;
+    const initialModel = createInitialSceneModel();
+    const model = reconcileMission(
+      initialModel,
+      {
+        id: mission.id,
+        title: mission.title,
+        description: mission.description || "",
+        status: mission.status,
+        plan_version: mission.plan_version || 1,
+        replan_count: mission.replan_count || 0,
+        progress: mission.progress || 0,
+      },
+      tasks.map((t) => ({
+        id: t.id,
+        mission_id: t.mission_id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        assigned_agent_id: t.assigned_agent_id,
+        dependencies: t.dependencies || [],
+        retry_count: t.retry_count,
+        max_retries: t.max_retries,
+        error_message: t.error_message,
+        output_data: t.output_data,
+        input_data: t.input_data,
+      })),
+      approvals.map((a) => ({
+        id: a.id,
+        mission_id: a.mission_id,
+        task_id: a.task_id,
+        agent_id: a.agent_id || a.agent_name || "",
+        tool_name: a.tool_name || "",
+        risk_level: a.risk_level || "MEDIUM",
+        reason: a.reason || a.action_description || "",
+        arguments: a.parameters || {},
+        arguments_hash: a.arguments_hash || "",
+        status: a.status,
+        requested_at: a.created_at || a.requested_at || new Date().toISOString(),
+        expires_at: a.expires_at || new Date().toISOString(),
+      })),
+      planRevisions.map((r) => ({
+        version: r.version,
+        parent_version: r.parent_version,
+        strategy: r.strategy,
+        reason: r.reason,
+        created_at: r.created_at,
+        plan_snapshot: r.plan_snapshot,
+      })),
+      missionMemories.map((m) => ({
+        id: m.id,
+        memory_type: m.memory_type,
+        source: m.source,
+        content: m.content,
+        importance: m.importance,
+        relevance_score: (m as any).relevance_score,
+        mission_id: m.mission_id,
+        task_id: m.task_id,
+      }))
+    );
+    return model.missions[mission.id] || null;
+  }, [mission, tasks, approvals, planRevisions, missionMemories]);
 
   const handleSelectStation = (taskId: string | null) => {
     setSelectedTaskId(taskId);
@@ -100,9 +169,10 @@ export default function MissionDetailPage() {
   const loadData = useCallback(async () => {
     if (!missionId) return;
     try {
-      const [mRes, tRes, revs, mems] = await Promise.all([
+      const [mRes, tRes, aRes, revs, mems] = await Promise.all([
         fetch(`/api/v1/missions/${missionId}`),
         fetch(`/api/v1/missions/${missionId}/tasks`),
+        fetch(`/api/v1/approvals`).catch(() => null),
         fetchMissionPlanRevisions(missionId).catch(() => []),
         fetchMissionMemories(missionId).catch(() => []),
       ]);
@@ -118,6 +188,15 @@ export default function MissionDetailPage() {
         const tData = await tRes.json();
         setTasks(Array.isArray(tData) ? tData : (tData.items || []));
       }
+
+      if (aRes && aRes.ok) {
+        const aData = await aRes.json();
+        const items = Array.isArray(aData) ? aData : (aData.items || []);
+        setApprovals(items.filter((item: any) => item.mission_id === missionId));
+      } else {
+        setApprovals([]);
+      }
+
       setPlanRevisions(Array.isArray(revs) ? revs : []);
       setMissionMemories(Array.isArray(mems) ? mems : []);
     } catch (err) {
@@ -516,12 +595,13 @@ export default function MissionDetailPage() {
             />
           </div>
         ) : viewMode === "SPATIAL" ? (
-          <div className="w-full h-[660px] rounded-3xl overflow-hidden border border-[#1a1a22] shadow-2xl relative">
+          <div className="w-full h-[760px] rounded-xl overflow-hidden border border-border/40 relative bg-[#0b0d13]">
             <SpatialMissionCanvas
-              mission={mission}
-              tasks={tasks}
-              onTaskSelect={(id) => {
+              sceneMission={sceneMission}
+              selectedTaskId={selectedTaskId}
+              onStationSelect={(id) => {
                 setSelectedTaskId(id);
+                handleSelectStation(id);
               }}
             />
           </div>

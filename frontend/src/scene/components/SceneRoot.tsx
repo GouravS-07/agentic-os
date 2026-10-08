@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Canvas } from "@react-three/fiber";
 import { useSceneStore } from "../state/useSceneStore";
 import { HomeScene } from "./HomeScene";
@@ -8,13 +9,16 @@ import { SceneBridge } from "../adapters/SceneBridge";
 
 export const SceneRoot: React.FC = () => {
   const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
   const is3DEnabled = useSceneStore((state) => state.is3DEnabled);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted || !is3DEnabled) {
+  // Do not render the background AI Core canvas on mission detail pages
+  // to avoid visual competition with the spatial mission DAG workspace
+  if (!mounted || !is3DEnabled || pathname?.startsWith("/missions")) {
     return null;
   }
 

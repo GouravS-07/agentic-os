@@ -1,8 +1,13 @@
 /**
- * AGENTIC OS — Spatial Lighting
- * Restrained dark studio lighting for the spatial mission workspace.
- * Visual principle: reveal geometry through light, not neon glow.
- * NO colored accent lights, NO cyan/purple fill lights.
+ * AGENTIC OS — Spatial Lighting (Refined Phase B)
+ * Restrained, high-contrast computational studio environment.
+ *
+ * Visual principle:
+ * - Controlled graphite base (#0b0c10 floor, #0e1016 background).
+ * - Soft neutral ambient fill (#dedad2) ensuring typography and chamfers are crisp.
+ * - Strong, focused key directional light creating contact shadows.
+ * - Cool rim edge light highlighting module silhouettes and physical conduits.
+ * - NO cyan/purple/neon glow. NO bloom gimmick.
  */
 
 import React from "react";
@@ -10,37 +15,45 @@ import React from "react";
 export function SpatialLighting() {
   return (
     <>
-      {/* Ambient: very low — barely enough to read shadow geometry */}
-      <ambientLight intensity={0.12} color="#d8d4cc" />
+      {/* Ambient fill: high-clarity neutral — prevents murky shadows */}
+      <ambientLight intensity={0.65} color="#e4e8f2" />
 
-      {/* Key light: warm-neutral directional from upper-left */}
+      {/* Primary Key Light: crisp studio architectural directional */}
       <directionalLight
-        position={[-6, 10, 6]}
-        intensity={1.1}
-        color="#f0ece4"
+        position={[-10, 18, 14]}
+        intensity={2.4}
+        color="#ffffff"
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-camera-near={0.5}
-        shadow-camera-far={60}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
-        shadow-bias={-0.001}
+        shadow-camera-far={80}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
+        shadow-bias={-0.0005}
       />
 
-      {/* Rim light: cooler, subtle, from lower-right rear — reveals depth on modules */}
+      {/* Secondary Edge/Rim Light: crisp titanium highlight from rear-right */}
       <directionalLight
-        position={[8, -2, -10]}
-        intensity={0.18}
-        color="#c8d4e0"
+        position={[16, 9, -14]}
+        intensity={1.25}
+        color="#d8e4f8"
         castShadow={false}
       />
 
-      {/* Ground bounce: very faint warm from below — prevents total black undersides */}
+      {/* Low-Angle Grazing Light: highlights side port collars and louvers */}
+      <directionalLight
+        position={[-14, 2, 8]}
+        intensity={0.65}
+        color="#c8d4e8"
+        castShadow={false}
+      />
+
+      {/* Ground bounce fill: prevents pitch black undersides */}
       <hemisphereLight
-        args={["#1a1814", "#0a0a08", 0.08]}
+        args={["#2c3244", "#10131c", 0.45]}
       />
     </>
   );

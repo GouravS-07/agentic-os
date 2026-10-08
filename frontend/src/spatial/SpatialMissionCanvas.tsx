@@ -1,188 +1,225 @@
 /**
- * AGENTIC OS — SpatialMissionCanvas
- * The primary Three.js Canvas for the Spatial Mission Workspace.
+ * AGENTIC OS — SpatialMissionCanvas (Refined Phase B)
+ * Main Three.js Canvas for the Spatial Mission Workspace.
  *
- * Phase A + Phase B:
- * - frameloop="demand": canvas sleeps when idle
- * - SpatialCameraRig: spring camera, only animates on focus
- * - SpatialLighting: restrained dark studio lighting
- * - TaskBlock3D: compute module per task
- * - SpatialConduit3D: physical conduit per dependency
- * - Ground plane: very subtle dark surface (NOT a grid)
- * - Background: near-black #060608
- *
- * Motion rules:
- * - Idle = completely still
- * - Motion only from: user click, user hover, real backend state change
+ * Visual improvements:
+ * - Controlled dark charcoal/graphite foundation (#0e1017) with refined ground plate (#141620).
+ * - FOV adjusted to 40° for optimal architectural telephoto perspective.
+ * - Prominent TaskBlock3D and SpatialConduit3D nodes filling 60-75% of viewport.
+ * - Dynamic camera distance adjustment based on DAG extent.
+ * - Still when idle (frameloop="demand").
  */
 
 "use client";
 
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Mission, Task } from "@/types";
+import type { SceneMission } from "@/world/adapter/types";
 import { SpatialCameraRig } from "./SpatialCameraRig";
 import { SpatialLighting } from "./SpatialLighting";
 import { TaskBlock3D } from "./components/TaskBlock3D";
 import { SpatialConduit3D } from "./components/SpatialConduit3D";
 import { useSpatialMissionStore } from "./state/useSpatialMissionStore";
-import { useMissionToSpatialDAG } from "./hooks/useMissionToSpatialDAG";
+import { useSpatialLayout } from "./hooks/useSpatialLayout";
 
-// ─── Ground plane ──────────────────────────────────────────────────────────────
-function GroundPlane() {
+// Ground architectural computational plinth
+function GroundPlate() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} receiveShadow>
-      <planeGeometry args={[80, 80]} />
-      <meshStandardMaterial
-        color="#09090b"
-        roughness={0.98}
-        metalness={0.0}
-      />
-    </mesh>
+    <group position={[0, -0.01, 0]}>
+      {/* Primary grounded chassis floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[120, 120]} />
+        <meshStandardMaterial color="#11141e" roughness={0.88} metalness={0.15} />
+      </mesh>
+      {/* Structural panel datum tracks */}
+      {[-8, -4, 0, 4, 8].map((offset, i) => (
+        <group key={i}>
+          <mesh position={[offset, 0.002, 0]}>
+            <boxGeometry args={[0.02, 0.004, 80]} />
+            <meshStandardMaterial color="#22283a" roughness={1} transparent opacity={0.25} />
+          </mesh>
+          <mesh position={[0, 0.002, offset]}>
+            <boxGeometry args={[80, 0.004, 0.02]} />
+            <meshStandardMaterial color="#22283a" roughness={1} transparent opacity={0.25} />
+          </mesh>
+        </group>
+      ))}
+    </group>
   );
 }
 
-// ─── Subtle depth reference marks (NOT a grid — just faint anchor lines) ──────
-function DepthReferenceMarks() {
-  // Very faint orthogonal marks at the origin — not a full grid
-  // Opacity kept at 0.04 maximum
-  const lineColor = "#1a1a22";
+// Environmental datum line accents (very faint engineering axes)
+function EnvironmentalDatums() {
+  const datumColor = "#222636";
   return (
-    <group position={[0, 0.001, 0]}>
-      {/* Centre cross — X axis */}
+    <group position={[0, 0.002, 0]}>
       <mesh>
-        <boxGeometry args={[30, 0.004, 0.015]} />
-        <meshStandardMaterial color={lineColor} roughness={1} metalness={0} transparent opacity={0.04} />
+        <boxGeometry args={[50, 0.004, 0.03]} />
+        <meshStandardMaterial
+          color={datumColor}
+          roughness={1}
+          metalness={0}
+          transparent
+          opacity={0.12}
+        />
       </mesh>
-      {/* Centre cross — Z axis */}
       <mesh>
-        <boxGeometry args={[0.015, 0.004, 30]} />
-        <meshStandardMaterial color={lineColor} roughness={1} metalness={0} transparent opacity={0.04} />
+        <boxGeometry args={[0.03, 0.004, 50]} />
+        <meshStandardMaterial
+          color={datumColor}
+          roughness={1}
+          metalness={0}
+          transparent
+          opacity={0.12}
+        />
       </mesh>
     </group>
   );
 }
 
-// ─── Empty state placeholder ───────────────────────────────────────────────────
-function EmptyScenePlaceholder() {
+function EmptySpatialWorkspace() {
   return (
-    <group>
-      {/* Subtle base marker indicating where tasks will appear */}
-      <mesh position={[0, 0.01, 0]}>
-        <boxGeometry args={[3, 0.006, 1.6]} />
-        <meshStandardMaterial color="#14141a" roughness={0.95} metalness={0.05} />
+    <group position={[0, 0.01, 0]}>
+      <mesh>
+        <boxGeometry args={[4.2, 0.012, 2.4]} />
+        <meshStandardMaterial color="#1a1d28" roughness={0.92} metalness={0.08} />
       </mesh>
     </group>
   );
 }
 
-// ─── Inner scene (rendered inside Canvas context) ──────────────────────────────
 interface InnerSceneProps {
-  mission: Mission | null;
-  tasks: Task[];
-  onTaskSelect?: (taskId: string) => void;
+  sceneMission: SceneMission | null;
+  selectedTaskId?: string | null;
+  onStationSelect?: (stationId: string) => void;
 }
 
-function InnerScene({ mission, tasks, onTaskSelect }: InnerSceneProps) {
-  const dagLayout = useMissionToSpatialDAG(mission, tasks);
+function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerSceneProps) {
+  const { stations, routes, ready, bounds } = useSpatialLayout(sceneMission);
+  const selectedNodeId = useSpatialMissionStore((s) => s.selectedNodeId);
   const selectNode = useSpatialMissionStore((s) => s.selectNode);
   const setCameraTarget = useSpatialMissionStore((s) => s.setCameraTarget);
 
-  const handleTaskSelect = useCallback(
-    (taskId: string) => {
-      // Find node position for camera focus
-      const node = dagLayout.nodes.find((n) => n.taskId === taskId);
-      if (node) {
-        const [x, , z] = node.position;
-        selectNode(taskId);
-        setCameraTarget([x, 0, z], 7);
+  // Automatically adjust camera distance to frame the DAG at 70-85% occupancy
+  useEffect(() => {
+    if (ready && stations.length > 0 && !selectedTaskId) {
+      // Tuned for 38° FOV and ~16:9 container aspect ratio
+      const widthReqDist = bounds.width > 0 ? bounds.width / 0.88 : 7.2;
+      const heightReqDist = bounds.height > 0 ? bounds.height / 0.52 : 6.0;
+      const calculatedDist = Math.max(7.0, Math.min(26.0, Math.max(widthReqDist, heightReqDist)));
+      setCameraTarget([0, 0.28, 0], calculatedDist);
+    }
+  }, [ready, stations.length, bounds.width, bounds.height, selectedTaskId, setCameraTarget]);
+
+  const handleStationSelect = useCallback(
+    (stationId: string) => {
+      const target = stations.find((s) => s.station.id === stationId);
+      if (target) {
+        const [x, , z] = target.position;
+        selectNode(stationId);
+        // Snappy focus zoom to selected module
+        setCameraTarget([x, 0.32, z], 4.8);
       }
-      onTaskSelect?.(taskId);
+      onStationSelect?.(stationId);
     },
-    [dagLayout.nodes, selectNode, setCameraTarget, onTaskSelect]
+    [stations, selectNode, setCameraTarget, onStationSelect]
   );
+
+  // Respond to prop-driven selection
+  useEffect(() => {
+    if (selectedTaskId && stations.length > 0) {
+      handleStationSelect(selectedTaskId);
+    }
+  }, [selectedTaskId, stations, handleStationSelect]);
+
+  // Expose global handler for automation/testing
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__selectSpatialTask = handleStationSelect;
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__selectSpatialTask;
+      }
+    };
+  }, [handleStationSelect]);
 
   return (
     <>
       <SpatialCameraRig />
       <SpatialLighting />
-      <GroundPlane />
-      <DepthReferenceMarks />
+      <GroundPlate />
+      <EnvironmentalDatums />
 
-      {/* Task modules */}
-      {dagLayout.ready &&
-        dagLayout.nodes.map((node) => (
+      {/* Task Compute Modules */}
+      {ready &&
+        stations.map(({ station, position, hasInputs, hasOutputs }) => (
           <TaskBlock3D
-            key={node.taskId}
-            taskId={node.taskId}
-            title={node.title}
-            status={node.status}
-            position={node.position}
-            hasInputs={node.hasInputs}
-            hasOutputs={node.hasOutputs}
-            onSelect={handleTaskSelect}
+            key={station.id}
+            station={station}
+            position={position}
+            hasInputs={hasInputs}
+            hasOutputs={hasOutputs}
+            isSelected={selectedNodeId === station.id}
+            onSelect={handleStationSelect}
           />
         ))}
 
-      {/* Dependency conduits */}
-      {dagLayout.ready &&
-        dagLayout.edges.map((edge) => (
+      {/* Dependency Conduits */}
+      {ready &&
+        routes.map(({ route, start, end }) => (
           <SpatialConduit3D
-            key={edge.id}
-            start={edge.start}
-            end={edge.end}
-            status={edge.status}
+            key={route.id}
+            route={route}
+            start={start}
+            end={end}
           />
         ))}
 
-      {/* Empty state */}
-      {(!dagLayout.ready || dagLayout.nodes.length === 0) && (
-        <EmptyScenePlaceholder />
-      )}
+      {/* Standby Workspace Placeholder */}
+      {(!ready || stations.length === 0) && <EmptySpatialWorkspace />}
     </>
   );
 }
 
-// ─── Canvas component (public API) ────────────────────────────────────────────
 export interface SpatialMissionCanvasProps {
-  mission: Mission | null;
-  tasks: Task[];
-  /** Optional callback when a task is selected in the spatial view */
-  onTaskSelect?: (taskId: string) => void;
+  sceneMission: SceneMission | null;
+  selectedTaskId?: string | null;
+  onStationSelect?: (stationId: string) => void;
   className?: string;
 }
 
 export function SpatialMissionCanvas({
-  mission,
-  tasks,
-  onTaskSelect,
+  sceneMission,
+  selectedTaskId,
+  onStationSelect,
   className,
 }: SpatialMissionCanvasProps) {
   return (
     <div
       className={className}
-      style={{ background: "#060608", width: "100%", height: "100%" }}
+      style={{ background: "#0b0d13", width: "100%", height: "100%" }}
     >
       <Canvas
         frameloop="demand"
         shadows
         camera={{
-          fov: 48,
+          fov: 38, // Slightly tighter telephoto lens for architectural clarity
           near: 0.1,
-          far: 200,
-          position: [0, 14, 18],
+          far: 250,
+          position: [0, 9, 13],
         }}
         gl={{
           antialias: true,
           alpha: false,
           powerPreference: "high-performance",
         }}
-        style={{ background: "#060608" }}
+        style={{ background: "#0b0d13" }}
       >
         <InnerScene
-          mission={mission}
-          tasks={tasks}
-          onTaskSelect={onTaskSelect}
+          sceneMission={sceneMission}
+          selectedTaskId={selectedTaskId}
+          onStationSelect={onStationSelect}
         />
       </Canvas>
     </div>

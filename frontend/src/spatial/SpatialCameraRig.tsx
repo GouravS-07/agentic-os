@@ -1,13 +1,12 @@
 /**
- * AGENTIC OS — Spatial Camera Rig
+ * AGENTIC OS — Spatial Camera Rig (Refined Phase B)
  * Spring-based camera with frameloop="demand" compatibility.
- * Camera only animates on explicit focus calls or user interaction.
- * Settles and stops invalidating when delta < 0.005.
+ * Tuned for 60-75% viewport occupancy and natural diagonal perspective.
  *
- * Motion rules:
- * - Normal focus: 250–350ms settle time
- * - Major scene transition: 350–500ms
- * - No idle drift, no ambient motion
+ * Perspective:
+ * - Pitch: ~32° (slight elevation to reveal top info surfaces and depth).
+ * - Yaw: -10° (gentle diagonal to reveal side chassis fins and sockets).
+ * - Settle time: 250-350ms. Still when idle.
  */
 
 "use client";
@@ -17,14 +16,14 @@ import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpatialMissionStore } from "./state/useSpatialMissionStore";
 
-// Spring constants — tuned for 250-350ms settle on typical movements
-const SPRING_STIFFNESS = 0.085;
-const SPRING_DAMPING = 0.72;
-const SETTLE_THRESHOLD = 0.005;
+// Spring constants — snappy 250-350ms settle
+const SPRING_STIFFNESS = 0.095;
+const SPRING_DAMPING = 0.74;
+const SETTLE_THRESHOLD = 0.003;
 
-// Default orbital perspective: pitch ~35°, yaw ~-8°
-const DEFAULT_PITCH = (35 * Math.PI) / 180;
-const DEFAULT_YAW = (-8 * Math.PI) / 180;
+// Default architectural perspective: pitch ~30°, yaw ~-14°
+const DEFAULT_PITCH = (30 * Math.PI) / 180;
+const DEFAULT_YAW = (-14 * Math.PI) / 180;
 
 function cameraPositionFromTarget(
   target: THREE.Vector3,
@@ -43,80 +42,75 @@ export function SpatialCameraRig() {
   const { camera, invalidate } = useThree();
   const store = useSpatialMissionStore();
 
-  // Current animated position and look-at target
-  const currentPos = useRef(new THREE.Vector3(0, 14, 18));
+  const initPos = cameraPositionFromTarget(new THREE.Vector3(0, 0, 0), store.cameraDistance);
+  const currentPos = useRef(initPos.clone());
   const currentTarget = useRef(new THREE.Vector3(0, 0, 0));
   const velocityPos = useRef(new THREE.Vector3(0, 0, 0));
   const velocityTarget = useRef(new THREE.Vector3(0, 0, 0));
 
-  // Goal state derived from store
-  const goalPos = useRef(new THREE.Vector3(0, 14, 18));
+  const goalPos = useRef(initPos.clone());
   const goalTarget = useRef(new THREE.Vector3(0, 0, 0));
 
-  // Track last focusTrigger to detect changes
   const lastFocusTrigger = useRef(store.focusTrigger);
 
-  // On mount: set initial camera position
   useEffect(() => {
-    const target = new THREE.Vector3(...store.cameraTarget);
-    const pos = cameraPositionFromTarget(target, store.cameraDistance);
+    const tgt = new THREE.Vector3(...store.cameraTarget);
+    const pos = cameraPositionFromTarget(tgt, store.cameraDistance);
     currentPos.current.copy(pos);
-    currentTarget.current.copy(target);
+    currentTarget.current.copy(tgt);
+    goalPos.current.copy(pos);
+    goalTarget.current.copy(tgt);
     camera.position.copy(pos);
-    camera.lookAt(target);
-    goalPos.current.copy(pos);
-    goalTarget.current.copy(target);
+    camera.lookAt(tgt);
     invalidate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When focusTrigger increments, update goal positions
   useEffect(() => {
-    if (store.focusTrigger === lastFocusTrigger.current) return;
-    lastFocusTrigger.current = store.focusTrigger;
-
-    const target = new THREE.Vector3(...store.cameraTarget);
-    const pos = cameraPositionFromTarget(target, store.cameraDistance);
-    goalPos.current.copy(pos);
-    goalTarget.current.copy(target);
-    invalidate();
+    if (store.focusTrigger !== lastFocusTrigger.current) {
+      lastFocusTrigger.current = store.focusTrigger;
+      const tgt = new THREE.Vector3(...store.cameraTarget);
+      goalTarget.current.copy(tgt);
+      goalPos.current.copy(cameraPositionFromTarget(tgt, store.cameraDistance));
+      invalidate();
+    }
   }, [store.focusTrigger, store.cameraTarget, store.cameraDistance, invalidate]);
 
   useFrame(() => {
-    let settling = false;
+    const deltaTarget = goalTarget.current.clone().sub(currentTarget.current);
+    const deltaPos = goalPos.current.clone().sub(currentPos.current);
 
-    // Spring towards goal position
-    const dp = goalPos.current.clone().sub(currentPos.current);
-    if (dp.length() > SETTLE_THRESHOLD) {
-      velocityPos.current.add(dp.multiplyScalar(SPRING_STIFFNESS));
-      velocityPos.current.multiplyScalar(SPRING_DAMPING);
-      currentPos.current.add(velocityPos.current);
-      settling = true;
-    } else {
-      velocityPos.current.set(0, 0, 0);
-      currentPos.current.copy(goalPos.current);
+    const isTargetSettled =
+      deltaTarget.length() < SETTLE_THRESHOLD &&
+      velocityTarget.current.length() < SETTLE_THRESHOLD;
+    const isPosSettled =
+      deltaPos.length() < SETTLE_THRESHOLD &&
+      velocityPos.current.length() < SETTLE_THRESHOLD;
+
+    if (isTargetSettled && isPosSettled) {
+      if (!currentTarget.current.equals(goalTarget.current)) {
+        currentTarget.current.copy(goalTarget.current);
+        currentPos.current.copy(goalPos.current);
+        camera.position.copy(currentPos.current);
+        camera.lookAt(currentTarget.current);
+        invalidate();
+      }
+      return;
     }
 
-    // Spring towards goal look-at target
-    const dt = goalTarget.current.clone().sub(currentTarget.current);
-    if (dt.length() > SETTLE_THRESHOLD) {
-      velocityTarget.current.add(dt.multiplyScalar(SPRING_STIFFNESS));
-      velocityTarget.current.multiplyScalar(SPRING_DAMPING);
-      currentTarget.current.add(velocityTarget.current);
-      settling = true;
-    } else {
-      velocityTarget.current.set(0, 0, 0);
-      currentTarget.current.copy(goalTarget.current);
-    }
+    velocityTarget.current
+      .add(deltaTarget.multiplyScalar(SPRING_STIFFNESS))
+      .multiplyScalar(SPRING_DAMPING);
+    currentTarget.current.add(velocityTarget.current);
 
-    // Apply to camera
+    velocityPos.current
+      .add(deltaPos.multiplyScalar(SPRING_STIFFNESS))
+      .multiplyScalar(SPRING_DAMPING);
+    currentPos.current.add(velocityPos.current);
+
     camera.position.copy(currentPos.current);
     camera.lookAt(currentTarget.current);
 
-    // Keep invalidating while spring is settling; stop when stable
-    if (settling) {
-      invalidate();
-    }
+    invalidate();
   });
 
   return null;

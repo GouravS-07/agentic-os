@@ -27,7 +27,7 @@ export interface SpatialMissionActions {
 }
 
 const DEFAULT_CAMERA_TARGET: [number, number, number] = [0, 0, 0];
-const DEFAULT_CAMERA_DISTANCE = 18;
+const DEFAULT_CAMERA_DISTANCE = 8.5;
 
 export const useSpatialMissionStore = create<
   SpatialMissionState & SpatialMissionActions
