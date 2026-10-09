@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Compass,
@@ -72,13 +72,33 @@ export default function MissionDetailPage() {
   const { openDocket, closeDocket, activeDocket } = useWorldStore();
 
   // Synchronize activeDocket with selectedTaskId (e.g. when user dismisses the docket with [X ESC])
+  const prevDocketRef = useRef(activeDocket);
   useEffect(() => {
-    if (!activeDocket && selectedTaskId) {
+    if (prevDocketRef.current && !activeDocket && selectedTaskId) {
       setSelectedTaskId(null);
     } else if (activeDocket && activeDocket.type === "STATION" && activeDocket.id !== selectedTaskId) {
       setSelectedTaskId(activeDocket.id);
     }
+    prevDocketRef.current = activeDocket;
   }, [activeDocket, selectedTaskId]);
+
+  // Keep open docket metadata dynamically synchronized with latest task state
+  useEffect(() => {
+    if (activeDocket && activeDocket.type === "STATION") {
+      const currentTask = tasks.find((t) => t.id === activeDocket.id);
+      if (currentTask && currentTask.status !== activeDocket.meta?.status) {
+        openDocket({
+          ...activeDocket,
+          meta: {
+            ...activeDocket.meta,
+            status: currentTask.status,
+            retry_count: currentTask.retry_count,
+            description: currentTask.description,
+          },
+        });
+      }
+    }
+  }, [tasks, activeDocket, openDocket]);
 
   // Authoritative SceneMission computed directly via the reconcile pipeline
   const sceneMission: SceneMission | null = React.useMemo(() => {

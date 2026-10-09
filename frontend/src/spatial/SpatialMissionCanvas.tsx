@@ -234,6 +234,7 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
     (stationId: string | null) => {
       if (!stationId) {
         selectNode(null);
+        setCameraMode("OVERVIEW");
         const overview = getOverviewPose();
         setCameraTarget(overview.target, overview.distance, overview.pitch, overview.yaw);
         onStationSelect?.(null);
@@ -241,13 +242,14 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
       }
 
       selectNode(stationId);
+      setCameraMode("TASK_FOCUS");
       const focusPose = getTaskFocusPose(stationId);
       if (focusPose) {
         setCameraTarget(focusPose.target, focusPose.distance, focusPose.pitch, focusPose.yaw);
       }
       onStationSelect?.(stationId);
     },
-    [selectNode, getOverviewPose, getTaskFocusPose, setCameraTarget, onStationSelect]
+    [selectNode, setCameraMode, getOverviewPose, getTaskFocusPose, setCameraTarget, onStationSelect]
   );
 
   // Handle camera mode change
@@ -271,17 +273,18 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
   }, [cameraMode, selectedNodeId, ready, stations.length, getOverviewPose, getTaskFocusPose, getDependencyFocusPose, setCameraTarget]);
 
   // Respond to prop-driven selection (from 2D DAG or parent page)
-  const prevPropTaskId = useRef(selectedTaskId);
+  const prevPropTaskId = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (!ready || stations.length === 0) return;
     if (selectedTaskId !== prevPropTaskId.current) {
       prevPropTaskId.current = selectedTaskId;
-      if (selectedTaskId && stations.length > 0) {
+      if (selectedTaskId) {
         handleStationSelect(selectedTaskId);
-      } else if (!selectedTaskId && selectedNodeId) {
+      } else if (selectedNodeId) {
         handleStationSelect(null);
       }
     }
-  }, [selectedTaskId, selectedNodeId, stations.length, handleStationSelect]);
+  }, [selectedTaskId, selectedNodeId, ready, stations.length, handleStationSelect]);
 
   // Expose global handlers for automated test suites
   useEffect(() => {
@@ -289,15 +292,17 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
       (window as any).__selectSpatialTask = (id: string | null) => handleStationSelect(id);
       (window as any).__setSpatialCameraMode = (mode: any) => setCameraMode(mode);
       (window as any).__clearSpatialSelection = () => handleStationSelect(null);
+      (window as any).__isSpatialLayoutReady = () => ready && stations.length > 0;
     }
     return () => {
       if (typeof window !== "undefined") {
         delete (window as any).__selectSpatialTask;
         delete (window as any).__setSpatialCameraMode;
         delete (window as any).__clearSpatialSelection;
+        delete (window as any).__isSpatialLayoutReady;
       }
     };
-  }, [handleStationSelect, setCameraMode]);
+  }, [handleStationSelect, setCameraMode, ready, stations.length]);
 
   return (
     <>

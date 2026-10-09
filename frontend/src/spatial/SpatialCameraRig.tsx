@@ -40,14 +40,19 @@ function easeQuartOut(t: number): number {
 
 export function SpatialCameraRig() {
   const { camera, invalidate } = useThree();
-  const store = useSpatialMissionStore();
+  const cameraTarget = useSpatialMissionStore((s) => s.cameraTarget);
+  const cameraDistance = useSpatialMissionStore((s) => s.cameraDistance);
+  const cameraPitch = useSpatialMissionStore((s) => s.cameraPitch);
+  const cameraYaw = useSpatialMissionStore((s) => s.cameraYaw);
+  const cameraMode = useSpatialMissionStore((s) => s.cameraMode);
+  const focusTrigger = useSpatialMissionStore((s) => s.focusTrigger);
 
-  const initTarget = new THREE.Vector3(...store.cameraTarget);
+  const initTarget = new THREE.Vector3(...cameraTarget);
   const initPos = cameraPositionFromTarget(
     initTarget,
-    store.cameraDistance,
-    store.cameraPitch,
-    store.cameraYaw
+    cameraDistance,
+    cameraPitch,
+    cameraYaw
   );
 
   const currentPos = useRef(initPos.clone());
@@ -61,16 +66,16 @@ export function SpatialCameraRig() {
   const goalPos = useRef(initPos.clone());
   const goalTarget = useRef(initTarget.clone());
 
-  const lastFocusTrigger = useRef(store.focusTrigger);
+  const lastFocusTrigger = useRef(focusTrigger);
 
   // Initialize camera position on mount
   useEffect(() => {
-    const tgt = new THREE.Vector3(...store.cameraTarget);
+    const tgt = new THREE.Vector3(...cameraTarget);
     const pos = cameraPositionFromTarget(
       tgt,
-      store.cameraDistance,
-      store.cameraPitch,
-      store.cameraYaw
+      cameraDistance,
+      cameraPitch,
+      cameraYaw
     );
     currentPos.current.copy(pos);
     currentTarget.current.copy(tgt);
@@ -83,21 +88,21 @@ export function SpatialCameraRig() {
 
   // Retarget whenever focusTrigger fires
   useEffect(() => {
-    if (store.focusTrigger !== lastFocusTrigger.current) {
-      lastFocusTrigger.current = store.focusTrigger;
+    if (focusTrigger !== lastFocusTrigger.current) {
+      lastFocusTrigger.current = focusTrigger;
 
       // Retarget immediately from wherever current camera is right now
       startPos.current.copy(camera.position);
       startTarget.current.copy(currentTarget.current);
 
-      const targetVec = new THREE.Vector3(...store.cameraTarget);
+      const targetVec = new THREE.Vector3(...cameraTarget);
       goalTarget.current.copy(targetVec);
       goalPos.current.copy(
         cameraPositionFromTarget(
           targetVec,
-          store.cameraDistance,
-          store.cameraPitch,
-          store.cameraYaw
+          cameraDistance,
+          cameraPitch,
+          cameraYaw
         )
       );
 
@@ -106,11 +111,11 @@ export function SpatialCameraRig() {
       invalidate();
     }
   }, [
-    store.focusTrigger,
-    store.cameraTarget,
-    store.cameraDistance,
-    store.cameraPitch,
-    store.cameraYaw,
+    focusTrigger,
+    cameraTarget,
+    cameraDistance,
+    cameraPitch,
+    cameraYaw,
     camera,
     invalidate,
   ]);
@@ -140,6 +145,23 @@ export function SpatialCameraRig() {
       invalidate();
     }
   });
+
+  // Expose live camera state for real session verification
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__getSpatialCameraState = () => ({
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        target: [currentTarget.current.x, currentTarget.current.y, currentTarget.current.z],
+        isTransitioning: isTransitioning.current,
+        cameraMode: useSpatialMissionStore.getState().cameraMode,
+      });
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__getSpatialCameraState;
+      }
+    };
+  }, [camera]);
 
   return null;
 }
