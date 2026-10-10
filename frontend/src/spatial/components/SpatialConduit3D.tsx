@@ -10,7 +10,9 @@
 
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import type { SceneRoute, SceneRouteVisualState } from "@/world/adapter/types";
 
 // Conduit Dimensions (metres)
@@ -174,6 +176,106 @@ function CornerJunctionBlock({
   );
 }
 
+// ── Directional Parametric Energy Packets (Active RUNNING bus conduits) ──
+function DirectionalEnergyPackets({
+  startX,
+  startY,
+  startZ,
+  endX,
+  endY,
+  endZ,
+  segments,
+}: {
+  startX: number;
+  startY: number;
+  startZ: number;
+  endX: number;
+  endY: number;
+  endZ: number;
+  segments: {
+    isDirect: boolean;
+    seg1: { x: number; z: number; len: number; isX: boolean };
+    seg2: { x: number; z: number; len: number; isX: boolean } | null;
+    seg3: { x: number; z: number; len: number; isX: boolean } | null;
+  };
+}) {
+  const p1Ref = useRef<THREE.Group>(null);
+  const p2Ref = useRef<THREE.Group>(null);
+  const p3Ref = useRef<THREE.Group>(null);
+
+  const isDirect = segments.isDirect;
+  const L1 = segments.seg1?.len || 0;
+  const L2 = segments.seg2?.len || 0;
+  const L3 = segments.seg3?.len || 0;
+  const totalLength = isDirect ? L1 : L1 + L2 + L3;
+  const midX = (startX + endX) / 2;
+
+  useFrame((state) => {
+    if (totalLength <= 0.05) return;
+    const t = state.clock.elapsedTime * 2.2; // 2.2 m/s
+
+    const updatePacket = (ref: React.RefObject<THREE.Group>, phase: number) => {
+      if (!ref.current) return;
+      const progress = ((t / totalLength + phase) % 1 + 1) % 1;
+      const d = progress * totalLength;
+      const yPos = startY + DUCT_HEIGHT * 0.35 + 0.008;
+
+      if (isDirect) {
+        ref.current.position.set(startX + d, yPos, startZ);
+        ref.current.rotation.set(0, 0, 0);
+      } else {
+        if (d < L1) {
+          ref.current.position.set(startX + d, yPos, startZ);
+          ref.current.rotation.set(0, 0, 0);
+        } else if (d < L1 + L2) {
+          const zOffset = d - L1;
+          const signZ = Math.sign(endZ - startZ);
+          ref.current.position.set(midX, yPos, startZ + signZ * zOffset);
+          ref.current.rotation.set(0, Math.PI / 2, 0);
+        } else {
+          const xOffset = d - L1 - L2;
+          ref.current.position.set(midX + xOffset, yPos, endZ);
+          ref.current.rotation.set(0, 0, 0);
+        }
+      }
+    };
+
+    updatePacket(p1Ref, 0.0);
+    updatePacket(p2Ref, 0.333);
+    updatePacket(p3Ref, 0.666);
+  });
+
+  return (
+    <group>
+      {[p1Ref, p2Ref, p3Ref].map((ref, idx) => (
+        <group key={idx} ref={ref}>
+          {/* Main Energy Packet Core */}
+          <mesh>
+            <boxGeometry args={[0.22, 0.035, 0.075]} />
+            <meshStandardMaterial
+              color="#e6b44a"
+              emissive="#b88028"
+              emissiveIntensity={0.8}
+              roughness={0.25}
+              metalness={0.3}
+            />
+          </mesh>
+          {/* Subtle Packet Head Glow Pip */}
+          <mesh position={[0.11, 0, 0]}>
+            <boxGeometry args={[0.04, 0.04, 0.065]} />
+            <meshStandardMaterial
+              color="#fff0aa"
+              emissive="#ffd055"
+              emissiveIntensity={1.2}
+              roughness={0.1}
+            />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 export interface SpatialConduit3DProps {
   route: SceneRoute;
   start: [number, number, number];
@@ -181,6 +283,8 @@ export interface SpatialConduit3DProps {
   isSelectedRoute?: boolean;
   isDownstreamRoute?: boolean;
   isDimmed?: boolean;
+  isTransmitting?: boolean;
+  prefersReducedMotion?: boolean;
 }
 
 export function SpatialConduit3D({
@@ -190,6 +294,8 @@ export function SpatialConduit3D({
   isSelectedRoute = false,
   isDownstreamRoute = false,
   isDimmed = false,
+  isTransmitting = false,
+  prefersReducedMotion = false,
 }: SpatialConduit3DProps) {
   const basePalette = CONDUIT_PALETTE[route.state] || CONDUIT_PALETTE.PENDING_DASHED;
 
@@ -361,6 +467,19 @@ export function SpatialConduit3D({
             <meshStandardMaterial color="#080608" roughness={0.98} metalness={0.05} />
           </mesh>
         </group>
+      )}
+
+      {/* ── 5. DIRECTIONAL ENERGY PACKETS (Active RUNNING routes) ── */}
+      {isTransmitting && !prefersReducedMotion && (
+        <DirectionalEnergyPackets
+          startX={startX}
+          startY={startY}
+          startZ={startZ}
+          endX={endX}
+          endY={endY}
+          endZ={endZ}
+          segments={segments}
+        />
       )}
     </group>
   );

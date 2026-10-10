@@ -12,8 +12,8 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { SceneMission } from "@/world/adapter/types";
 import { SpatialCameraRig } from "./SpatialCameraRig";
 import { SpatialLighting } from "./SpatialLighting";
@@ -95,6 +95,70 @@ function EmptySpatialWorkspace() {
   );
 }
 
+// Direct spatial frame callback monitor (measures actual render-loop calls under demand loop)
+function SpatialFrameMonitor() {
+  const counterRef = useRef(0);
+  useFrame(() => {
+    counterRef.current++;
+    if (typeof window !== "undefined") {
+      (window as any).__spatialFrameCount = counterRef.current;
+    }
+  });
+  return null;
+}
+
+// Global active transition registry: tracks animated components actively in-flight
+const activeTransitions = new Set<string>();
+let activeTransitionUntil = 0;
+
+export function registerActiveTransition(id: string) {
+  activeTransitions.add(id);
+  if (typeof window !== "undefined") {
+    (window as any).__spatialTransitionActive = true;
+  }
+}
+
+export function unregisterActiveTransition(id: string) {
+  activeTransitions.delete(id);
+}
+
+export function triggerSpatialTransition(durationMs = 750) {
+  activeTransitionUntil = Math.max(activeTransitionUntil, performance.now() + durationMs);
+  if (typeof window !== "undefined") {
+    (window as any).__spatialTransitionActive = true;
+  }
+}
+
+if (typeof window !== "undefined") {
+  (window as any).__triggerSpatialTransition = triggerSpatialTransition;
+  (window as any).__getActiveSpatialTransitionsCount = () => activeTransitions.size;
+  (window as any).__getActiveSpatialTransitions = () => Array.from(activeTransitions);
+}
+
+// Demand frame coordinator: keeps frameloop invalidating smoothly when tasks are RUNNING
+// or while post-RUNNING state transitions (elevations, gates, derailments) are in-flight.
+function AnimationCoordinator({
+  hasRunningTasks,
+  prefersReducedMotion,
+}: {
+  hasRunningTasks: boolean;
+  prefersReducedMotion: boolean;
+}) {
+  const { invalidate } = useThree();
+  useFrame(() => {
+    if (prefersReducedMotion) return;
+    const now = performance.now();
+    const hasInFlightTransitions = activeTransitions.size > 0 || now < activeTransitionUntil;
+    if (typeof window !== "undefined") {
+      (window as any).__spatialTransitionActive = hasInFlightTransitions;
+    }
+    if (hasRunningTasks || hasInFlightTransitions) {
+      invalidate();
+    }
+  });
+  return null;
+}
+
 interface InnerSceneProps {
   sceneMission: SceneMission | null;
   selectedTaskId?: string | null;
@@ -109,6 +173,38 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
   const setCameraMode = useSpatialMissionStore((s) => s.setCameraMode);
   const setCameraTarget = useSpatialMissionStore((s) => s.setCameraTarget);
   const resetCamera = useSpatialMissionStore((s) => s.resetCamera);
+
+  // Prefers reduced motion detection
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
+  const hasRunningTasks = useMemo(() => {
+    return stations.some((s) => s.station.state === "RUNNING");
+  }, [stations]);
+
+  // Track state transitions across stations to trigger animation settling grace window
+  const prevStatesRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+    let anyStateChanged = false;
+    stations.forEach(({ station }) => {
+      const prev = prevStatesRef.current.get(station.id);
+      if (prev !== undefined && prev !== station.state) {
+        anyStateChanged = true;
+      }
+      prevStatesRef.current.set(station.id, station.state);
+    });
+    if (anyStateChanged) {
+      triggerSpatialTransition(650);
+    }
+  }, [stations, prefersReducedMotion]);
 
   // ── Graph Context Resolution ──
   // Identifies immediate prerequisites (unlockers) and dependents (unlocked)
@@ -293,6 +389,28 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
       (window as any).__setSpatialCameraMode = (mode: any) => setCameraMode(mode);
       (window as any).__clearSpatialSelection = () => handleStationSelect(null);
       (window as any).__isSpatialLayoutReady = () => ready && stations.length > 0;
+      (window as any).__getStationStates = () => stations.map((s) => ({ id: s.station.id, state: s.station.state, title: s.station.title }));
+      (window as any).__getActiveConduits = () => routes.map(({ route }) => {
+        const sourceStation = stations.find((s) => s.station.id === route.sourceStationId)?.station;
+        const targetStation = stations.find((s) => s.station.id === route.targetStationId)?.station;
+        const isConduitTransmitting =
+          !prefersReducedMotion &&
+          route.state === "ENERGIZED_AMBER" &&
+          !route.isSupersededGhost &&
+          sourceStation !== undefined &&
+          sourceStation.state === "RUNNING" &&
+          targetStation !== undefined &&
+          targetStation.state !== "FAILED" &&
+          targetStation.state !== "BLOCKED" &&
+          targetStation.state !== "CANCELLED";
+        return {
+          id: route.id,
+          sourceStationId: route.sourceStationId,
+          targetStationId: route.targetStationId,
+          routeState: route.state,
+          isTransmitting: isConduitTransmitting,
+        };
+      });
     }
     return () => {
       if (typeof window !== "undefined") {
@@ -300,9 +418,11 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
         delete (window as any).__setSpatialCameraMode;
         delete (window as any).__clearSpatialSelection;
         delete (window as any).__isSpatialLayoutReady;
+        delete (window as any).__getStationStates;
+        delete (window as any).__getActiveConduits;
       }
     };
-  }, [handleStationSelect, setCameraMode, ready, stations.length]);
+  }, [handleStationSelect, setCameraMode, ready, stations, routes, prefersReducedMotion]);
 
   return (
     <>
@@ -310,6 +430,11 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
       <SpatialLighting />
       <GroundPlate onGroundClick={() => handleStationSelect(null)} />
       <EnvironmentalDatums />
+      <SpatialFrameMonitor />
+      <AnimationCoordinator
+        hasRunningTasks={hasRunningTasks}
+        prefersReducedMotion={prefersReducedMotion}
+      />
 
       {/* Task Compute Modules */}
       {ready &&
@@ -330,6 +455,7 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
               isPrerequisite={isPrereq}
               isDependent={isDep}
               isDimmed={isDimmed}
+              prefersReducedMotion={prefersReducedMotion}
               onSelect={handleStationSelect}
             />
           );
@@ -342,6 +468,20 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
           const isDownstreamRoute = outgoingRouteIds.has(route.id);
           const isDimmed = !!selectedNodeId && !isSelectedRoute && !isDownstreamRoute;
 
+          const sourceStation = stations.find((s) => s.station.id === route.sourceStationId)?.station;
+          const targetStation = stations.find((s) => s.station.id === route.targetStationId)?.station;
+
+          const isConduitTransmitting =
+            !prefersReducedMotion &&
+            route.state === "ENERGIZED_AMBER" &&
+            !route.isSupersededGhost &&
+            sourceStation !== undefined &&
+            sourceStation.state === "RUNNING" &&
+            targetStation !== undefined &&
+            targetStation.state !== "FAILED" &&
+            targetStation.state !== "BLOCKED" &&
+            targetStation.state !== "CANCELLED";
+
           return (
             <SpatialConduit3D
               key={route.id}
@@ -351,6 +491,8 @@ function InnerScene({ sceneMission, selectedTaskId, onStationSelect }: InnerScen
               isSelectedRoute={isSelectedRoute}
               isDownstreamRoute={isDownstreamRoute}
               isDimmed={isDimmed}
+              isTransmitting={isConduitTransmitting}
+              prefersReducedMotion={prefersReducedMotion}
             />
           );
         })}

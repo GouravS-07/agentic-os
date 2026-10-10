@@ -1,6 +1,44 @@
+# Dependencies
 node_modules/
+
+# Next.js build output & caches
 .next/
+out/
+.turbo/
+
+# Python caches and bytecode
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
+.coverage
+htmlcov/
 *.log
+
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment and secrets (retain example files)
+.env
+.env.*
+!.env.example
+!.env*.example
+.env*.local
+
+# OS & Editor metadata
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Test and capture scratch output
+scratch_output/
+

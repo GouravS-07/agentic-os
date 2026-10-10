@@ -27,11 +27,12 @@
 
 "use client";
 
-import React, { useRef, useCallback, useMemo, useState } from "react";
-import { useThree } from "@react-three/fiber";
+import React, { useRef, useCallback, useMemo, useState, useEffect } from "react";
+import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Text } from "@react-three/drei";
 import type { SceneStation, BackendTaskStatus } from "@/world/adapter/types";
+import { registerActiveTransition, unregisterActiveTransition } from "../SpatialMissionCanvas";
 
 // Structural Physical Dimensions (metres)
 export const MODULE_WIDTH = 3.4;
@@ -131,20 +132,54 @@ function CornerBracket({ x, z }: { x: number; z: number }) {
 
 // ── 2. Heavy Input / Output Port Collar Assembly ──
 function ModulePortAssembly({
+  stationId,
   isOutput,
   hasConnection,
   isBlocked,
   isApprovalGated,
+  prefersReducedMotion = false,
 }: {
+  stationId: string;
   isOutput: boolean;
   hasConnection: boolean;
   isBlocked: boolean;
   isApprovalGated: boolean;
+  prefersReducedMotion?: boolean;
 }) {
   const xPos = isOutput ? MODULE_WIDTH / 2 : -MODULE_WIDTH / 2;
   const collarRot: [number, number, number] = isOutput
     ? [0, 0, -Math.PI / 2]
     : [0, 0, Math.PI / 2];
+
+  const gatePlateGroupRef = useRef<THREE.Group>(null);
+  const currentGateY = useRef(isApprovalGated ? 0 : 0.42);
+  const transitionKey = `${stationId}_gate`;
+
+  useEffect(() => {
+    return () => {
+      unregisterActiveTransition(transitionKey);
+    };
+  }, [transitionKey]);
+
+  useFrame((_, delta) => {
+    if (gatePlateGroupRef.current && isOutput) {
+      const targetY = isApprovalGated ? 0 : 0.42;
+      if (prefersReducedMotion) {
+        currentGateY.current = targetY;
+        unregisterActiveTransition(transitionKey);
+      } else {
+        const diff = targetY - currentGateY.current;
+        if (Math.abs(diff) > 0.002) {
+          registerActiveTransition(transitionKey);
+          currentGateY.current += diff * Math.min(1, 14 * delta);
+        } else {
+          currentGateY.current = targetY;
+          unregisterActiveTransition(transitionKey);
+        }
+      }
+      gatePlateGroupRef.current.position.y = currentGateY.current;
+    }
+  });
 
   return (
     <group position={[xPos, BASE_HEIGHT + CHASSIS_HEIGHT * 0.48, 0]}>
@@ -179,21 +214,22 @@ function ModulePortAssembly({
       {/* Physical Barrier Gate (WAITING_APPROVAL) clamping output port */}
       {isOutput && isApprovalGated && (
         <group position={[0.26, 0, 0]}>
-          {/* Vertical Guillotine Gate Guide Uprights */}
+          {/* Vertical Guillotine Gate Guide Uprights (fixed structural guides) */}
           <mesh position={[0, 0.24, 0]}>
             <boxGeometry args={[0.10, 0.52, 0.44]} />
             <meshStandardMaterial color={PALETTE.gateSteel} roughness={0.7} metalness={0.5} />
           </mesh>
-          {/* Heavy Clamped Interlock Barrier Plate */}
-          <mesh position={[0.02, 0, 0]} castShadow>
-            <boxGeometry args={[0.06, 0.42, 0.40]} />
-            <meshStandardMaterial color={PALETTE.gatePlate} roughness={0.45} metalness={0.65} />
-          </mesh>
-          {/* Locking Bolt Pin */}
-          <mesh position={[0.06, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.045, 0.045, 0.10, 8]} />
-            <meshStandardMaterial color="#d4aa48" roughness={0.35} metalness={0.7} />
-          </mesh>
+          {/* Clamped Interlock Barrier Plate & Locking Pin (animated drop) */}
+          <group ref={gatePlateGroupRef}>
+            <mesh position={[0.02, 0, 0]} castShadow>
+              <boxGeometry args={[0.06, 0.42, 0.40]} />
+              <meshStandardMaterial color={PALETTE.gatePlate} roughness={0.45} metalness={0.65} />
+            </mesh>
+            <mesh position={[0.06, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.045, 0.045, 0.10, 8]} />
+              <meshStandardMaterial color="#d4aa48" roughness={0.35} metalness={0.7} />
+            </mesh>
+          </group>
         </group>
       )}
 
@@ -211,7 +247,15 @@ function ModulePortAssembly({
 }
 
 // ── 3. Internal Process Core Assembly ──
-function ProcessCoreAssembly({ status }: { status: BackendTaskStatus }) {
+function ProcessCoreAssembly({
+  stationId,
+  status,
+  prefersReducedMotion = false,
+}: {
+  stationId: string;
+  status: BackendTaskStatus;
+  prefersReducedMotion?: boolean;
+}) {
   const isRunning = status === "RUNNING";
   const isCompleted = status === "COMPLETED";
   const isFailed = status === "FAILED";
@@ -220,14 +264,91 @@ function ProcessCoreAssembly({ status }: { status: BackendTaskStatus }) {
   const coreColor = PALETTE.coreRail[status] || PALETTE.coreRail.PENDING;
   const finColor = PALETTE.coreFins[status] || PALETTE.coreFins.PENDING;
 
-  // Physical Core Displacement
-  // RUNNING: elevated active engagement
-  // FAILED: tilted, physically derailed center rail
-  // COMPLETED: seated firmly flush
-  const coreElevation = isRunning ? 0.15 : isCompleted ? 0.03 : isFailed ? -0.04 : 0.05;
+  // Target core elevation
+  const targetElevation = isRunning ? 0.15 : isCompleted ? 0.03 : isFailed ? -0.04 : 0.05;
+  const currentElevation = useRef(targetElevation);
+  const tiltProgress = useRef(isFailed ? 1 : 0);
+  const coreGroupRef = useRef<THREE.Group>(null);
+  const centerRailRef = useRef<THREE.Group>(null);
+  const finMatRef = useRef<THREE.MeshStandardMaterial>(null);
+
+  const elevKey = `${stationId}_elevation`;
+  const tiltKey = `${stationId}_tilt`;
+
+  useEffect(() => {
+    return () => {
+      unregisterActiveTransition(elevKey);
+      unregisterActiveTransition(tiltKey);
+    };
+  }, [elevKey, tiltKey]);
+
+  useFrame((state, delta) => {
+    // 1. Core elevation glide transition
+    if (prefersReducedMotion) {
+      currentElevation.current = targetElevation;
+      unregisterActiveTransition(elevKey);
+    } else {
+      const diffElev = targetElevation - currentElevation.current;
+      if (Math.abs(diffElev) > 0.001) {
+        registerActiveTransition(elevKey);
+        currentElevation.current += diffElev * Math.min(1, 10 * delta);
+      } else {
+        currentElevation.current = targetElevation;
+        unregisterActiveTransition(elevKey);
+      }
+    }
+    if (coreGroupRef.current) {
+      coreGroupRef.current.position.y = BASE_HEIGHT + 0.14 + currentElevation.current;
+    }
+
+    // 2. Center rail failure tilt transition
+    if (centerRailRef.current) {
+      const targetProgress = isFailed ? 1 : 0;
+      const targetTiltX = 0.08;
+      const targetTiltY = -0.12;
+      const targetTiltZ = 0.14;
+      const targetY = -0.06;
+
+      if (prefersReducedMotion) {
+        tiltProgress.current = targetProgress;
+        centerRailRef.current.rotation.set(
+          targetTiltX * targetProgress,
+          targetTiltY * targetProgress,
+          targetTiltZ * targetProgress
+        );
+        centerRailRef.current.position.y = targetY * targetProgress;
+        unregisterActiveTransition(tiltKey);
+      } else {
+        const diffProgress = targetProgress - tiltProgress.current;
+        if (Math.abs(diffProgress) > 0.002) {
+          registerActiveTransition(tiltKey);
+          tiltProgress.current += diffProgress * Math.min(1, 10 * delta);
+        } else {
+          tiltProgress.current = targetProgress;
+          unregisterActiveTransition(tiltKey);
+        }
+        centerRailRef.current.rotation.set(
+          targetTiltX * tiltProgress.current,
+          targetTiltY * tiltProgress.current,
+          targetTiltZ * tiltProgress.current
+        );
+        centerRailRef.current.position.y = targetY * tiltProgress.current;
+      }
+    }
+
+    // 3. Active fin respiration pulse (RUNNING state)
+    if (finMatRef.current && isRunning) {
+      if (prefersReducedMotion) {
+        finMatRef.current.emissiveIntensity = 0.25;
+      } else {
+        const breath = Math.sin(state.clock.elapsedTime * 3.2) * 0.5 + 0.5;
+        finMatRef.current.emissiveIntensity = 0.2 + 0.45 * breath;
+      }
+    }
+  });
 
   return (
-    <group position={[0, BASE_HEIGHT + 0.14 + coreElevation, -0.12]}>
+    <group ref={coreGroupRef} position={[0, BASE_HEIGHT + 0.14 + targetElevation, -0.12]}>
       {/* ── Sunken Core Bay Cavity Floor ── */}
       <mesh position={[0, -0.08, 0]} receiveShadow>
         <boxGeometry args={[2.3, 0.06, 1.35]} />
@@ -250,14 +371,18 @@ function ProcessCoreAssembly({ status }: { status: BackendTaskStatus }) {
 
       {/* ── Longitudinal Processor Heat-Sink Rails (3 units) ── */}
       {[-0.68, 0, 0.68].map((xOffset, railIdx) => {
-        // Center rail derailment on failure
         const isCenterRail = railIdx === 1;
         const tiltRot: [number, number, number] =
           isFailed && isCenterRail ? [0.08, -0.12, 0.14] : [0, 0, 0];
         const yOffset = isFailed && isCenterRail ? -0.06 : 0;
 
         return (
-          <group key={railIdx} position={[xOffset, yOffset, 0]} rotation={tiltRot}>
+          <group
+            key={railIdx}
+            ref={isCenterRail ? centerRailRef : undefined}
+            position={[xOffset, yOffset, 0]}
+            rotation={tiltRot}
+          >
             {/* Core Body Rail */}
             <mesh castShadow receiveShadow>
               <boxGeometry args={[0.42, 0.22, 1.05]} />
@@ -268,7 +393,14 @@ function ProcessCoreAssembly({ status }: { status: BackendTaskStatus }) {
             {[-0.38, -0.22, -0.06, 0.10, 0.26, 0.42].map((zOffset, finIdx) => (
               <mesh key={finIdx} position={[0, 0.12, zOffset]} castShadow>
                 <boxGeometry args={[0.46, 0.06, 0.04]} />
-                <meshStandardMaterial color={finColor} roughness={0.52} metalness={0.45} />
+                <meshStandardMaterial
+                  ref={isCenterRail && finIdx === 0 ? finMatRef : undefined}
+                  color={finColor}
+                  emissive={isRunning ? "#445a28" : "#000000"}
+                  emissiveIntensity={isRunning ? 0.35 : 0}
+                  roughness={0.52}
+                  metalness={0.45}
+                />
               </mesh>
             ))}
 
@@ -320,6 +452,7 @@ export interface TaskBlock3DProps {
   isPrerequisite?: boolean;
   isDependent?: boolean;
   isDimmed?: boolean;
+  prefersReducedMotion?: boolean;
   onSelect?: (stationId: string) => void;
 }
 
@@ -332,6 +465,7 @@ export function TaskBlock3D({
   isPrerequisite = false,
   isDependent = false,
   isDimmed = false,
+  prefersReducedMotion = false,
   onSelect,
 }: TaskBlock3DProps) {
   const { invalidate } = useThree();
@@ -450,22 +584,30 @@ export function TaskBlock3D({
 
       {/* Input Port Assembly (-X) */}
       <ModulePortAssembly
+        stationId={station.id}
         isOutput={false}
         hasConnection={hasInputs}
         isBlocked={status === "BLOCKED"}
         isApprovalGated={false}
+        prefersReducedMotion={prefersReducedMotion}
       />
 
       {/* Output Port Assembly (+X) */}
       <ModulePortAssembly
+        stationId={station.id}
         isOutput={true}
         hasConnection={hasOutputs}
         isBlocked={false}
         isApprovalGated={station.hasApprovalBarrier || status === "WAITING_APPROVAL"}
+        prefersReducedMotion={prefersReducedMotion}
       />
 
       {/* ── LAYER 3: INTERNAL PROCESS CORE ── */}
-      <ProcessCoreAssembly status={status} />
+      <ProcessCoreAssembly
+        stationId={station.id}
+        status={status}
+        prefersReducedMotion={prefersReducedMotion}
+      />
 
       {/* ── LAYER 2: INFORMATION SURFACE (Inset Forward Deck Placard) ── */}
       <group position={[0, BASE_HEIGHT + CHASSIS_HEIGHT + 0.008, MODULE_DEPTH / 2 - 0.24]}>

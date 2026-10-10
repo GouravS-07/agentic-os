@@ -160,10 +160,30 @@ This automatically enables the `vector` extension and creates HNSW cosine index 
 
 ---
 
-## 7. Automated Test Suite
+## 7. Automated Test Suite & Verification
 
+### Backend Tests
 ```bash
 cd backend
 pytest -v
 ```
-All **71 automated unit, integration, and E2E scenario tests** will execute and verify the system end-to-end.
+All **75 automated backend unit, integration, and E2E scenario tests** execute and verify the system end-to-end.
+
+### Frontend Tests & Spatial Engine Verification
+```bash
+cd frontend
+npm test
+```
+Executes domain model unit suites (diffing, event handling, conduit transmission predicates, and orthogonal routing geometry).
+
+### Browser-Level Visual & Integration Verifications
+Headless browser verification scripts run with configurable output paths and Chrome executable resolution:
+```bash
+# Optional environment variables:
+#   OUT_DIR / ARTIFACT_DIR: Path to store generated verification screenshots (defaults to ./scratch_output)
+#   CHROME_BIN: Path to local Chrome executable
+
+node frontend/scripts/verify-phase-d.mjs
+node frontend/scripts/verify-live-interactions.mjs
+```
+
