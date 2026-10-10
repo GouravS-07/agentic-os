@@ -258,7 +258,7 @@ async def seed_demo_data(
             MemoryCreate(
                 user_id=user_id,
                 memory_type=MemoryType.WORKING,
-                source=MemorySource.AGENT_REFLECTION,
+                source=MemorySource.AGENT_DECISION,
                 content="Agentic OS runtime enforces deterministic state transitions across Mission and Task lifecycles.",
                 importance=3,
             ),

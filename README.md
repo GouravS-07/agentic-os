@@ -110,7 +110,8 @@ python -m pip install -r requirements.txt
 alembic upgrade head
 python -m uvicorn app.main:app --reload --port 8000
 ```
-API Documentation will be available at `http://localhost:8000/docs`.
+- API Documentation: `http://localhost:8000/docs`
+- Service Health Checks: `http://localhost:8000/health` (also aliased at `http://localhost:8000/api/v1/health`)
 
 ### Frontend Setup
 ```bash
@@ -122,22 +123,41 @@ Open `http://localhost:3000` in your browser.
 
 ---
 
-## 5. End-to-End Demo Mode
+## 5. End-to-End Demo Mode & Provider Implementations
 
-Agentic OS provides a deterministic, zero-configuration demo runner that demonstrates the complete intelligence loop without requiring external third-party API keys:
+### Real vs. Mock Integrations
+To ensure deterministic, offline evaluation without paid external API keys, Agentic OS defaults to mock providers out of the box:
+- **State Machine, DAG Engine, & Orchestration**: **100% Real** production logic running on SQLAlchemy AsyncIO with strict state transition guarantees.
+- **Event Bus & WebSockets**: **100% Real** asynchronous in-process monotonic event distribution and real-time frontend streaming.
+- **Sandboxed Tool Execution**: **100% Real** local process subshell execution for filesystem and terminal tools, constrained to `./workspaces`. (GitHub operations use `MockGitHubTool`).
+- **LLM Provider**: Defaults to `LLM_PROVIDER=mock` with deterministic DAG plans. Real provider adapters are implemented for Anthropic Claude (`claude-3-5-sonnet`), OpenAI (`gpt-4o`), and Google Gemini.
+- **Embedding Provider**: Defaults to `EMBEDDING_PROVIDER=mock`. Real vector embeddings are implemented for OpenAI (`text-embedding-3-small`) and Google Gemini.
+- **Database**: Defaults to local SQLite (`agentic_os.db`). PostgreSQL + `pgvector` is supported for production vector similarity search.
 
+> **Note:** Executing scenarios under `LLM_PROVIDER=mock` validates internal state machine transitions, event dispatch, and replanning choreography. It does not test third-party LLM inference or prompt variability. To test against live models, provide real API keys in `backend/.env`.
+
+### Running Demo Scenarios
 ```bash
-# Trigger the complete intelligence loop via REST:
-curl -X POST http://localhost:8000/api/v1/demo/scenarios/complete-loop
-
-# Or seed rich sample data:
+# Seed rich sample missions, tasks, and memory entries:
 curl -X POST http://localhost:8000/api/v1/demo/seed
+
+# Or trigger the complete autonomous intelligence loop via REST:
+curl -X POST http://localhost:8000/api/v1/demo/scenarios/complete-loop
 ```
 Alternatively, click **"Run Complete Demo Loop"** directly on the dashboard at `http://localhost:3000`.
 
 ---
 
-## 6. PostgreSQL + pgvector Setup (Production)
+## 6. Security Boundary & Production Hardening
+
+> **Development Notice:** In development mode, REST endpoints default to operator context (`user_id="default_operator"`) to facilitate local iteration without authentication overhead. Do not expose this service directly to public networks. Before production deployment:
+> 1. Configure an API gateway or reverse proxy enforcing cryptographic JWT / OAuth bearer tokens.
+> 2. Enable strict database tenancy and role-based access control (RBAC).
+> 3. Enforce containerized process sandboxing for terminal tools.
+
+---
+
+## 7. PostgreSQL + pgvector Setup (Production)
 
 To run with PostgreSQL and native vector similarity search:
 
@@ -160,7 +180,7 @@ This automatically enables the `vector` extension and creates HNSW cosine index 
 
 ---
 
-## 7. Automated Test Suite & Verification
+## 8. Automated Test Suite & Verification
 
 ### Backend Tests
 ```bash

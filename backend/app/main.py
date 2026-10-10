@@ -121,6 +121,10 @@ def create_app() -> FastAPI:
     app.include_router(api_v1_router, prefix="/api/v1")
     app.include_router(ws_router)
 
+    # Root-level health check (aliases /api/v1/health for standard container orchestrators and quickstart docs)
+    from app.api.v1.health import router as health_router
+    app.include_router(health_router)
+
     # Root redirect / ping
     @app.get("/", tags=["Root"])
     async def root():
