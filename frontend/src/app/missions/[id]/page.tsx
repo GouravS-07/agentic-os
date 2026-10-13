@@ -166,6 +166,84 @@ export default function MissionDetailPage() {
     return model.missions[mission.id] || null;
   }, [mission, tasks, approvals, planRevisions, missionMemories]);
 
+  // Autonomous Recovery Derived State (Phase E)
+  const hasRecoveryPlan = Boolean(
+    (mission && mission.plan_version && mission.plan_version > 1) ||
+    planRevisions.length > 0
+  );
+
+  const recoveryDetails = React.useMemo(() => {
+    if (!hasRecoveryPlan) return null;
+    const latestRev = planRevisions.length > 0 ? planRevisions[planRevisions.length - 1] : null;
+    const fromVersion = latestRev?.parent_version ?? (mission?.plan_version && mission.plan_version > 1 ? mission.plan_version - 1 : 1);
+    const toVersion = latestRev?.version ?? (mission?.plan_version || 2);
+    const strategy = latestRev?.strategy || "CREATE_RECOVERY_TASK";
+    const reason = latestRev?.reason || (mission?.replan_count ? "Autonomous remediation rewired DAG dependencies following task failure" : "");
+    const recoveryTask = tasks.find(
+      (t) =>
+        t.title.toLowerCase().startsWith("fix & recover") ||
+        t.title.toLowerCase().startsWith("recovery:")
+    );
+    const failedOrRetriedTask = tasks.find(
+      (t) => t.retry_count > 0 || (recoveryTask && (t.dependencies || []).includes(recoveryTask.id))
+    );
+    return {
+      fromVersion,
+      toVersion,
+      strategy,
+      reason,
+      recoveryTask,
+      failedOrRetriedTask,
+    };
+  }, [hasRecoveryPlan, planRevisions, mission, tasks]);
+
+  const recoveryTheme = React.useMemo(() => {
+    if (!recoveryDetails || !mission) return null;
+    if (mission.status === "WAITING_APPROVAL") {
+      return {
+        bannerClass: "bg-amber-950/20 border-amber-500/40 shadow-amber-500/5",
+        iconBoxClass: "bg-amber-500/20 border-amber-500/30 text-amber-400",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse motion-reduce:animate-none",
+        statusLabel: "PAUSED AT SECURITY GATE",
+        explanation: "Autonomous recovery paused: newly injected tool execution requires operator clearance under Permission Guard policy.",
+      };
+    }
+    if (mission.status === "FAILED") {
+      return {
+        bannerClass: "bg-rose-950/20 border-rose-500/40 shadow-rose-500/5",
+        iconBoxClass: "bg-rose-500/20 border-rose-500/30 text-rose-400",
+        badgeClass: "bg-rose-500/20 text-rose-300 border-rose-500/40",
+        statusLabel: "RECOVERY EXHAUSTED",
+        explanation: "Autonomous remediation failed or maximum replan budget exceeded. Operator intervention required.",
+      };
+    }
+    if (mission.status === "CANCELLED") {
+      return {
+        bannerClass: "bg-surface-raised/40 border-border/80",
+        iconBoxClass: "bg-surface-raised border-border text-muted-foreground",
+        badgeClass: "bg-surface-raised text-muted-foreground border-border",
+        statusLabel: "EXECUTION CANCELLED",
+        explanation: `Mission execution was cancelled by operator while operating under Plan v${recoveryDetails.toVersion}.0.`,
+      };
+    }
+    if (mission.status === "COMPLETED") {
+      return {
+        bannerClass: "bg-purple-950/20 border-purple-500/40 shadow-purple-500/10",
+        iconBoxClass: "bg-purple-500/20 border-purple-500/30 text-purple-400",
+        badgeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+        statusLabel: "REMEDIATION RESOLVED & COMPLETED",
+        explanation: `Autonomous recovery succeeded. Injected remediation task resolved root cause, unblocking execution to 100% completion under Plan v${recoveryDetails.toVersion}.0.`,
+      };
+    }
+    return {
+      bannerClass: "bg-purple-950/30 border-purple-500/50 shadow-purple-500/10",
+      iconBoxClass: "bg-purple-500/20 border-purple-500/30 text-purple-300",
+      badgeClass: "bg-purple-500/20 text-purple-300 border-purple-500/40 animate-pulse motion-reduce:animate-none",
+      statusLabel: "RECOVERY ACTIVE",
+      explanation: `Executing autonomous remediation Plan v${recoveryDetails.toVersion}.0 to resolve dependency fault.`,
+    };
+  }, [recoveryDetails, mission]);
+
   const handleSelectStation = (taskId: string | null) => {
     setSelectedTaskId(taskId);
     if (!taskId) {
@@ -569,6 +647,86 @@ export default function MissionDetailPage() {
         </div>
       </div>
 
+      {/* Autonomous Recovery HUD Banner (Phase E) */}
+      {hasRecoveryPlan && recoveryDetails && recoveryTheme && (
+        <div
+          data-testid="recovery-hud-banner"
+          className={cn(
+            "p-5 rounded-2xl border backdrop-blur-xl shadow-xl transition-all space-y-3",
+            recoveryTheme.bannerClass
+          )}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  "p-2.5 rounded-xl border flex items-center justify-center shrink-0",
+                  recoveryTheme.iconBoxClass
+                )}
+              >
+                <GitBranch className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold font-mono tracking-wide text-foreground">
+                    PLAN EVOLUTION ACTIVE: v{recoveryDetails.fromVersion}.0 → v{recoveryDetails.toVersion}.0
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-mono px-2 py-0.5 rounded-full border font-semibold",
+                      recoveryTheme.badgeClass
+                    )}
+                  >
+                    {recoveryTheme.statusLabel}
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                    Strategy: {recoveryDetails.strategy}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 font-sans">
+                  {recoveryTheme.explanation}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {recoveryDetails.recoveryTask && (
+                <button
+                  onClick={() => handleSelectStation(recoveryDetails.recoveryTask!.id)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-mono bg-purple-500/20 text-purple-200 border border-purple-500/40 hover:bg-purple-500/30 transition-all flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Inspect Recovery Node</span>
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab("evolution")}
+                className="px-3 py-1.5 rounded-xl text-xs font-mono bg-surface-raised border border-border/80 text-foreground hover:bg-muted transition-all flex items-center gap-1.5"
+              >
+                <History className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Plan Diff</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Root Cause & Remediation Summary */}
+          {recoveryDetails.reason && (
+            <div className="pt-2.5 border-t border-border/40 flex flex-col sm:flex-row sm:items-center justify-between text-[11px] font-mono text-muted-foreground gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground/60 uppercase tracking-wider">Root Cause:</span>
+                <span className="text-foreground/90 font-medium">{recoveryDetails.reason}</span>
+              </div>
+              {recoveryDetails.recoveryTask && (
+                <div className="flex items-center gap-1.5 text-purple-300/80">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Injected: {recoveryDetails.recoveryTask.title}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-border/80 pb-2">
         <button
@@ -638,6 +796,7 @@ export default function MissionDetailPage() {
           <div className="rounded-3xl bg-surface/75 border border-border/90 p-6 backdrop-blur-xl shadow-xl">
             <DAGVisualizer
               tasks={tasks}
+              planRevisions={planRevisions}
               onTaskAction={handleTaskAction}
               selectedTaskId={selectedTaskId}
               onSelectTask={handleSelectStation}

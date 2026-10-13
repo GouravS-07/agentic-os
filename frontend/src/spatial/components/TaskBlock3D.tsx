@@ -473,12 +473,35 @@ export function TaskBlock3D({
   const [isHovered, setIsHovered] = useState(false);
 
   const status = station.state;
-  const statusTelemetry = STATE_TELEMETRY[status] || "STANDBY";
-  const perimeterColor = PALETTE.chassisPerimeter[status] || PALETTE.chassisPerimeter.PENDING;
-  const stateTextColor = (PALETTE.text.state as any)[status] || PALETTE.text.state.PENDING;
+  const statusTelemetry = station.isRecovery
+    ? status === "COMPLETED"
+      ? "RECOVERY // RESOLVED"
+      : status === "RUNNING"
+      ? "RECOVERY // ACTIVE"
+      : status === "READY"
+      ? "RECOVERY // READY"
+      : status === "FAILED"
+      ? "RECOVERY // EXHAUSTED"
+      : status === "WAITING_APPROVAL"
+      ? "RECOVERY // HELD"
+      : "RECOVERY // INJECTED"
+    : STATE_TELEMETRY[status] || "STANDBY";
+  const perimeterColor = station.isRecovery
+    ? "#30243c"
+    : PALETTE.chassisPerimeter[status] || PALETTE.chassisPerimeter.PENDING;
+  const stateTextColor = station.isRecovery
+    ? "#c084fc"
+    : (PALETTE.text.state as any)[status] || PALETTE.text.state.PENDING;
 
-  // Extract compact task index badge: "1. Provision..." -> "01"
+  // Extract compact task index badge: "1. Provision..." -> "01", or "RCV" for recovery injection
   const { taskIndex, displayTitle } = useMemo(() => {
+    if (station.isRecovery) {
+      const match = station.title.match(/^(\d+)\.\s*(.*)/);
+      if (match) {
+        return { taskIndex: "RCV", displayTitle: match[2] };
+      }
+      return { taskIndex: "RCV", displayTitle: station.title.replace(/^Fix & Recover:\s*/i, "Recover: ") };
+    }
     const match = station.title.match(/^(\d+)\.\s*(.*)/);
     if (match) {
       const num = parseInt(match[1], 10);
@@ -486,7 +509,7 @@ export function TaskBlock3D({
       return { taskIndex: padded, displayTitle: match[2] };
     }
     return { taskIndex: "--", displayTitle: station.title };
-  }, [station.title]);
+  }, [station.title, station.isRecovery]);
 
   const handleClick = useCallback(
     (e: any) => {
@@ -617,12 +640,12 @@ export function TaskBlock3D({
           <meshStandardMaterial color={PALETTE.deckPlacard} roughness={0.62} metalness={0.35} />
         </mesh>
 
-        {/* Step Index Badge (e.g. "01") */}
+        {/* Step Index Badge (e.g. "01" or "RCV") */}
         <Text
           position={[-MODULE_WIDTH / 2 + 0.58, 0.02, 0]}
           rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.11}
-          color={PALETTE.text.badge}
+          fontSize={station.isRecovery ? 0.095 : 0.11}
+          color={station.isRecovery ? "#c084fc" : PALETTE.text.badge}
           fillOpacity={fillOpacity}
           anchorX="center"
           anchorY="middle"
@@ -630,6 +653,14 @@ export function TaskBlock3D({
         >
           {taskIndex}
         </Text>
+
+        {/* Engineering Recovery Trim */}
+        {station.isRecovery && (
+          <mesh position={[0, 0.015, -0.17]}>
+            <boxGeometry args={[MODULE_WIDTH - 0.74, 0.006, 0.02]} />
+            <meshStandardMaterial color="#a855f7" roughness={0.4} metalness={0.6} transparent opacity={fillOpacity} />
+          </mesh>
+        )}
 
         {/* Divider Tick */}
         <mesh position={[-MODULE_WIDTH / 2 + 0.74, 0.015, 0]}>

@@ -137,7 +137,15 @@ export interface BackendRevisionInput {
   strategy: string;
   reason: string;
   created_at: string;
-  plan_snapshot?: { tasks?: any[] };
+  plan_snapshot?: {
+    version?: number;
+    tasks?: any[];
+    previous_plan?: {
+      version?: number;
+      tasks?: any[];
+    };
+    [key: string]: any;
+  };
 }
 
 export interface BackendMemoryInput {
@@ -219,21 +227,63 @@ export function reconcileMission(
   const stationMap = new Map(stations.map((s) => [s.id, s]));
   const routes: SceneRoute[] = [];
 
+  // Determine dynamically changed dependencies from actual plan-revision data
+  const isRevisedPlan = (missionData.plan_version && missionData.plan_version > 1) || revisionsData.length > 0;
+
+  let parentEdges: Set<string> | null = null;
+  if (revisionsData.length > 0) {
+    const latestRev = revisionsData[revisionsData.length - 1];
+
+    // 1. Direct parent plan snapshot nested in latest revision (pre-mutation capture)
+    const previousPlan = latestRev.plan_snapshot?.previous_plan;
+    if (previousPlan?.tasks && Array.isArray(previousPlan.tasks)) {
+      parentEdges = new Set<string>();
+      previousPlan.tasks.forEach((pt: any) => {
+        (pt.dependencies || []).forEach((dep: string) => {
+          parentEdges!.add(`${dep}->${pt.id}`);
+        });
+      });
+    } else if (latestRev.parent_version !== undefined && latestRev.parent_version !== null) {
+      // 2. If multiple revisions exist and an earlier revision row corresponds to parent_version
+      const parentRev = revisionsData.find((r) => r.version === latestRev.parent_version);
+      if (parentRev?.plan_snapshot?.tasks && Array.isArray(parentRev.plan_snapshot.tasks)) {
+        parentEdges = new Set<string>();
+        parentRev.plan_snapshot.tasks.forEach((pt: any) => {
+          (pt.dependencies || []).forEach((dep: string) => {
+            parentEdges!.add(`${dep}->${pt.id}`);
+          });
+        });
+      }
+    }
+  }
+
+  const isProvenChangedEdge = (sourceId: string, targetId: string): boolean => {
+    if (!isRevisedPlan || parentEdges === null) {
+      // For initial plan or historical revisions lacking verified parent snapshot,
+      // do not falsely claim edge was proven rewired.
+      return false;
+    }
+    // Genuinely rewired when absent in parent plan and present in current plan
+    return !parentEdges.has(`${sourceId}->${targetId}`);
+  };
+
   tasksData.forEach((t) => {
     const targetStation = stationMap.get(t.id);
+    if (!targetStation) return;
     (t.dependencies || []).forEach((depId) => {
       const sourceStation = stationMap.get(depId);
-      if (!targetStation || !sourceStation) return;
+      if (!sourceStation) return;
+      const isChangedEdge = isProvenChangedEdge(depId, t.id);
 
       let state: SceneRoute["state"] = "PENDING_DASHED";
       if (targetStation.state === "FAILED") {
         state = "FRACTURED_RED";
+      } else if (isChangedEdge) {
+        state = "RECOVERY_DASHED";
       } else if (sourceStation.state === "RUNNING" || targetStation.state === "RUNNING") {
         state = "ENERGIZED_AMBER";
       } else if (targetStation.state === "READY" || targetStation.state === "COMPLETED") {
         state = "SET_SOLID";
-      } else if (targetStation.isRecovery) {
-        state = "RECOVERY_DASHED";
       }
 
       routes.push({
@@ -250,8 +300,9 @@ export function reconcileMission(
           },
           targetStation.position,
         ],
-        hasSwitchBlade: targetStation.isRecovery,
-        switchBladeThrown: targetStation.isRecovery && targetStation.state !== "COMPLETED",
+        hasSwitchBlade: isChangedEdge,
+        switchBladeThrown: isChangedEdge &&
+          (targetStation.state !== "COMPLETED" || sourceStation.state !== "COMPLETED"),
         isSupersededGhost: false,
       });
     });

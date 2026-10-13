@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { Task, TaskStatus } from "@/types";
+import React, { useState, useMemo } from "react";
+import { Task, TaskStatus, PlanRevision } from "@/types";
 import {
   CheckCircle2,
   Clock,
@@ -15,11 +15,13 @@ import {
   Zap,
   Activity,
   Maximize2,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DAGVisualizerProps {
   tasks: Task[];
+  planRevisions?: PlanRevision[];
   onTaskAction?: (taskId: string, action: "start" | "complete" | "fail" | "execute") => void;
   selectedTaskId?: string | null;
   onSelectTask?: (taskId: string | null) => void;
@@ -49,35 +51,35 @@ const STATUS_CONFIGS: Record<
   READY: {
     badge: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
     border: "border-cyan-500/40",
-    glow: "shadow-[0_0_15px_rgba(6,182,212,0.15)]",
+    glow: "shadow-[0_0_15px_rgba(6,182,212,0.15)] motion-reduce:shadow-none",
     bg: "bg-surface/80",
     dot: "bg-cyan-400",
   },
   RUNNING: {
-    badge: "bg-primary/20 text-primary border-primary/40 animate-pulse",
+    badge: "bg-primary/20 text-primary border-primary/40 animate-pulse motion-reduce:animate-none",
     border: "border-primary",
-    glow: "shadow-[0_0_20px_rgba(99,102,241,0.3)]",
+    glow: "shadow-[0_0_20px_rgba(99,102,241,0.3)] motion-reduce:shadow-none",
     bg: "bg-surface/90",
-    dot: "bg-primary animate-ping",
+    dot: "bg-primary animate-ping motion-reduce:animate-none",
   },
   WAITING_APPROVAL: {
-    badge: "bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse",
+    badge: "bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse motion-reduce:animate-none",
     border: "border-amber-500/60",
-    glow: "shadow-[0_0_20px_rgba(245,158,11,0.25)]",
+    glow: "shadow-[0_0_20px_rgba(245,158,11,0.25)] motion-reduce:shadow-none",
     bg: "bg-surface/90",
     dot: "bg-amber-400",
   },
   COMPLETED: {
     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
     border: "border-emerald-500/40",
-    glow: "shadow-[0_0_12px_rgba(16,185,129,0.12)]",
+    glow: "shadow-[0_0_12px_rgba(16,185,129,0.12)] motion-reduce:shadow-none",
     bg: "bg-surface/60",
     dot: "bg-emerald-400",
   },
   FAILED: {
     badge: "bg-rose-500/20 text-rose-400 border-rose-500/40",
     border: "border-rose-500/50",
-    glow: "shadow-[0_0_15px_rgba(244,63,94,0.2)]",
+    glow: "shadow-[0_0_15px_rgba(244,63,94,0.2)] motion-reduce:shadow-none",
     bg: "bg-surface/80",
     dot: "bg-rose-400",
   },
@@ -92,6 +94,7 @@ const STATUS_CONFIGS: Record<
 
 export function DAGVisualizer({
   tasks,
+  planRevisions,
   onTaskAction,
   selectedTaskId: propSelectedTaskId,
   onSelectTask,
@@ -133,6 +136,43 @@ export function DAGVisualizer({
       unblocksMap.set(depId, list);
     });
   });
+
+  // Derive dynamically changed dependencies from actual plan-revision data
+  const isDynamicallyAdded = useMemo(() => {
+    return (sourceId: string, targetId: string) => {
+      if (!planRevisions || planRevisions.length === 0) return false;
+      const latestRev = planRevisions[planRevisions.length - 1];
+
+      let parentEdges: Set<string> | null = null;
+      const previousPlan = latestRev.plan_snapshot?.previous_plan;
+      if (previousPlan?.tasks && Array.isArray(previousPlan.tasks)) {
+        parentEdges = new Set<string>();
+        previousPlan.tasks.forEach((pt: any) => {
+          (pt.dependencies || []).forEach((dep: string) => {
+            parentEdges!.add(`${dep}->${pt.id}`);
+          });
+        });
+      } else if (latestRev.parent_version !== undefined && latestRev.parent_version !== null) {
+        const parentRev = planRevisions.find((r) => r.version === latestRev.parent_version);
+        if (parentRev?.plan_snapshot?.tasks && Array.isArray(parentRev.plan_snapshot.tasks)) {
+          parentEdges = new Set<string>();
+          parentRev.plan_snapshot.tasks.forEach((pt: any) => {
+            (pt.dependencies || []).forEach((dep: string) => {
+              parentEdges!.add(`${dep}->${pt.id}`);
+            });
+          });
+        }
+      }
+
+      if (parentEdges === null) {
+        // For initial plan or historical revisions lacking verified parent snapshot,
+        // do not falsely claim edge was proven rewired.
+        return false;
+      }
+
+      return !parentEdges.has(`${sourceId}->${targetId}`);
+    };
+  }, [planRevisions]);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId);
 
@@ -177,7 +217,9 @@ export function DAGVisualizer({
           const Icon = STATUS_ICONS[task.status] || Clock;
           const conf = STATUS_CONFIGS[task.status] || STATUS_CONFIGS.PENDING;
           const unblockedTasks = unblocksMap.get(task.id) || [];
-          const isRecovery = task.title.startsWith("Fix & Recover");
+          const isRecovery =
+            task.title.toLowerCase().startsWith("fix & recover") ||
+            task.title.toLowerCase().startsWith("recovery:");
 
           return (
             <div
@@ -202,6 +244,12 @@ export function DAGVisualizer({
                     <span className="text-[10px] font-mono text-muted-foreground bg-surface-raised/80 px-2 py-0.5 rounded-md border border-border">
                       STEP {index + 1}
                     </span>
+                    {task.retry_count > 0 && (
+                      <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30 flex items-center gap-1">
+                        <RotateCcw className="w-2.5 h-2.5" />
+                        Retry #{task.retry_count}
+                      </span>
+                    )}
                     {isRecovery && (
                       <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md border border-purple-500/40 flex items-center gap-1 font-semibold">
                         <GitBranch className="w-3 h-3" />
@@ -248,13 +296,24 @@ export function DAGVisualizer({
                       <span className="shrink-0 text-muted-foreground/70">Depends on:</span>
                       {task.dependencies.map((depId) => {
                         const depInfo = taskIndexMap.get(depId);
+                        const isChangedEdge = isDynamicallyAdded(depId, task.id);
                         return (
                           <span
                             key={depId}
                             title={depInfo ? `Step ${depInfo.index}: ${depInfo.title}` : depId}
-                            className="bg-surface-raised border border-border/80 px-1.5 py-0.5 rounded text-[10px] text-cyan-400 flex items-center gap-1"
+                            className={cn(
+                              "border px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1",
+                              isChangedEdge
+                                ? "bg-purple-500/20 border-purple-500/50 text-purple-300 font-semibold shadow-sm"
+                                : "bg-surface-raised border-border/80 text-cyan-400"
+                            )}
                           >
                             <span>Step {depInfo ? depInfo.index : depId.slice(0, 4)}</span>
+                            {isChangedEdge && (
+                              <span className="text-[9px] px-1 rounded bg-purple-500/30 text-purple-200 uppercase font-mono tracking-tighter">
+                                Rewired
+                              </span>
+                            )}
                           </span>
                         );
                       })}
