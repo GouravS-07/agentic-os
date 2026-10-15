@@ -171,6 +171,22 @@ class ReplanningEngine:
             dependencies=[],
         )
 
+        # Capture parent plan state before any DAG restructuring or recovery injection
+        parent_tasks = await TaskService.list_mission_tasks(mission.id, session)
+        previous_plan = {
+            "version": mission.plan_version,
+            "tasks": [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.value,
+                    "retry_count": t.retry_count,
+                    "dependencies": list(t.dependencies),
+                }
+                for t in parent_tasks
+            ],
+        }
+
         # Create the recovery task in the DB
         recovery_task = await TaskService.create_task(
             mission_id=mission.id,
@@ -235,6 +251,7 @@ class ReplanningEngine:
                 }
                 for t in all_tasks_res
             ],
+            "previous_plan": previous_plan,
         }
 
         revision = PlanRevision(

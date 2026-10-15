@@ -307,6 +307,21 @@ async def test_replanning_engine_dynamic_dag_modification_and_versioning(db_sess
     assert revisions[0].parent_version == 1
     assert "sharp" in revisions[0].reason
 
+    # Verify snapshot captured post-replan tasks AND true pre-mutation parent plan
+    snap = revisions[0].plan_snapshot
+    assert snap["version"] == 2
+    assert len(snap["tasks"]) == 4  # Post-replan tasks: A, B, C, and Recovery Task
+
+    assert "previous_plan" in snap
+    prev_plan = snap["previous_plan"]
+    assert prev_plan["version"] == 1
+    assert len(prev_plan["tasks"]) == 3  # Pre-replan parent tasks: A, B, C
+    prev_task_ids = {pt["id"] for pt in prev_plan["tasks"]}
+    assert prev_task_ids == {task_a.id, task_b.id, task_c.id}
+    # In parent plan, task_b only depended on task_a, NOT on recovery task
+    prev_b = next(pt for pt in prev_plan["tasks"] if pt["id"] == task_b.id)
+    assert prev_b["dependencies"] == [task_a.id]
+
     # 5. Verify DAG Structure: Recovery Task X is READY, Task B is PENDING depending on X
     tasks = await TaskService.list_mission_tasks(mission.id, db_session)
     assert len(tasks) == 4  # A, B, C, and Recovery Task
